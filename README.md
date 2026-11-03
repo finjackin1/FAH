@@ -7,7 +7,7 @@ O FAH recebe o som dos programas por um cabo virtual, aplica os ajustes e entreg
 ## O que ele faz
 
 - **Equalizador** gráfico e paramétrico, com tom e limitador.
-- **AutoEQ** com correção para 8.850 fones, a partir do projeto [AutoEq](https://github.com/jaakkopasanen/AutoEq).
+- **AutoEQ** com 8.850 correções para 6.033 modelos de fone, a partir do projeto [AutoEq](https://github.com/jaakkopasanen/AutoEq).
 - **Efeitos:** balanço, largura do estéreo, reverb e crossfeed.
 - **Som 7.1 para fone:** transforma os 8 canais que os jogos mandam em som posicionado, com medições de cabeça MIT KEMAR e SADIE II.
 - **Microfone:** limpeza de ruído com IA (DeepFilterNet3), detecção de voz (Silero VAD), equalizador e alteração de voz.
@@ -33,11 +33,11 @@ Em uma pasta sem permissão de escrita, como `Arquivos de Programas`, os ajustes
 | [VB-CABLE](https://vb-audio.com/Cable/) | Sim | Não | Só com o CABLE-A instalado junto |
 | [Voicemeeter](https://vb-audio.com/Voicemeeter/) | Sim | Não | Não |
 
-Na primeira vez que coloca o Virtual Audio Cable em 7.1, o Windows pode pedir permissão de administrador. Se você recusar, o cabo fica em estéreo.
+Na primeira vez que o FAH coloca o Virtual Audio Cable em 7.1, o Windows pode pedir permissão de administrador. Se você recusar, o cabo fica em estéreo.
 
 Ao fechar, o FAH desliga os cabos virtuais no Windows e devolve a saída padrão. Os programas abertos podem ficar sem som até serem reabertos. Os cabos voltam quando o FAH abre de novo. Para desinstalar, abra e feche o FAH uma última vez e apague a pasta; se um cabo continuar sumido, ative-o de novo em Configurações > Sistema > Som.
 
-## Compilando do código-fonte
+## Como compilar
 
 Precisa do [SDK do .NET 10](https://dotnet.microsoft.com/download) e do Python 3.
 
@@ -45,7 +45,7 @@ Precisa do [SDK do .NET 10](https://dotnet.microsoft.com/download) e do Python 3
 python ferramentas/empacotar.py <pasta vazia>
 ```
 
-O resultado sai em `<pasta vazia>\FAH` e em `FAH-win-x64.zip`. Os testes ficam em `fonte/Testes`. Alguns usam amostras de áudio que não estão no repositório e o cabo virtual deste computador.
+O resultado sai em `<pasta vazia>\FAH` e em `FAH-win-x64.zip`. Os testes ficam em `fonte/Testes`. Alguns precisam de amostras de áudio que não estão no repositório e de um cabo virtual instalado.
 
 ## Licença
 
