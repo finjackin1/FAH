@@ -93,6 +93,37 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
   const popHtml = () => Object.keys(PRESETS).map((k) => `<div data-preset="${k}">${k}</div>`).join('')
     + (Object.keys(E.meus).length ? '<hr>' + Object.keys(E.meus).map((k) => `<div data-preset="${esc(k)}" data-meu="1">${esc(k)}<span class="x" data-apaga="1" title="Apagar este preset">×</span></div>`).join('') : '')
     + '<hr><div data-salvar="1">Salvar como preset…</div>';
+  let elEq = null;                                   // mounted EQ screen (set in montar)
+  if (cfg.porSaida) {
+    // Peace / Equalizer APO text ("Preamp: X dB", "Filter N: ON PK Fc F Hz Gain G dB Q Q") -> user preset in parametric mode.
+    // Peace LP/HP (cut above/below Fc) have no exact twin here: our pb/pa boost/cut their band, so HP -> pb -15 dB, LP -> pa -15 dB.
+    const TP = { PK: 'pico', PEQ: 'pico', MODAL: 'pico', LS: 'grave', LSC: 'grave', LSQ: 'grave', HS: 'agudo', HSC: 'agudo', HSQ: 'agudo', LP: 'pa', LPQ: 'pa', HP: 'pb', HPQ: 'pb' };
+    const n = (s) => { const x = parseFloat(String(s).replace(',', '.')); return Number.isFinite(x) ? x : null; };   // "." or "-" alone -> null
+    const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+    App.eqImportar = (texto, nome) => { let pre = 0, achouPre = false, fora = 0; const bandas = [];
+      String(texto || '').split(/\r?\n/).forEach((l) => {
+        const p = l.match(/^\s*Preamp\s*:\s*([-+\d.,]+)\s*dB/i); if (p) { if (n(p[1]) != null) { pre += n(p[1]); achouPre = true; } return; }
+        const m = l.match(/^\s*Filter\s*\d*\s*:\s*(ON|OFF)\s+([A-Z]+)\b(.*)$/i); if (!m || /^NONE$/i.test(m[2])) return;   // "OFF None" = empty Peace slot
+        const v = (r) => { const x = m[3].match(r); return x ? n(x[1]) : null; };
+        const t = TP[m[2].toUpperCase()], fc = v(/Fc\s+([-+\d.,]+)/i), g = v(/Gain\s+([-+\d.,]+)/i), q = v(/\bQ\s+([-+\d.,]+)/i);
+        if (!t || fc == null || bandas.length >= MAXB) { fora++; return; }
+        const pp = t === 'pb' || t === 'pa';
+        bandas.push({ t, f: lim(Math.round(fc), 20, 20000), g: pp ? -15 : lim(g ?? 0, -15, 15), q: lim(q ?? (pp || t !== 'pico' ? .7 : 1), .1, 10), on: m[1].toUpperCase() === 'ON' ? 1 : 0 }); });
+      if (!bandas.length) return achouPre ? 'Esse arquivo só tem o pré-amp, sem nenhum filtro para importar.' : 'Não achei filtros do Peace ou do Equalizer APO nesse arquivo.';
+      let nm = String(nome || 'Importado').trim().slice(0, 24) || 'Importado'; if (PRESETS[nm]) nm = nm.slice(0, 13) + ' (importado)';
+      const s = { modo: 'param', g: E.g.slice(), bandas, pre: lim(pre, -15, 15), bass: E.bass, treble: E.treble };
+      E.meus[nm] = s; Object.assign(E, JSON.parse(JSON.stringify(s)), { sel: 0, preset: nm }); redesenha?.();
+      return `Importei "${nm}" com ${bandas.length} ${bandas.length > 1 ? 'bandas' : 'banda'}. Ele já está tocando e ficou salvo nos presets do Equalizador.`
+        + (fora ? ` ${fora} ${fora > 1 ? 'linhas ficaram' : 'linha ficou'} de fora (tipo de filtro que o FAH não tem ou mais de ${MAXB} bandas).` : ''); };
+    // global hotkey "next preset" (Janela.cs -> 'atalho' {acao:'preset'}): factory presets, then the user's, in a loop
+    addEventListener('fah:atalho', (e) => { if (e.detail?.acao !== 'preset') return;
+      const l = [...Object.keys(PRESETS), ...Object.keys(E.meus)]; if (!l.length) return;
+      const nx = l[(l.indexOf(E.preset) + 1) % l.length], b = elEq?.isConnected && elEq.querySelector(`.pop [data-preset="${CSS.escape(nx)}"]`);
+      if (b) b.click();                              // screen mounted: same path as the menu (glide/morph)
+      else if (E.meus[nx]) { const s = E.meus[nx]; Object.assign(E, { modo: s.modo, g: s.g.slice(), bandas: s.bandas.map((x) => ({ ...x })), pre: s.pre, bass: s.bass, treble: s.treble, sel: 0, preset: nx }); }
+      else Object.assign(E, { g: PRESETS[nx].slice(), modo: 'grafico', preset: nx });
+      App.toast?.('Preset: ' + nx); });
+  }
 
   // ---- values: key path ("bass", "g.3", "b.1.f") + range ----
   const RG = { pre: [-15, 15, .5], g: [-15, 15, .5], bass: [-10, 10, .5], treble: [-10, 10, .5], teto: [-12, 0, .5], f: [20, 20000, 0, 1], q: [.1, 10, .05], bg: [-15, 15, .5] };
@@ -170,7 +201,7 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
   // "linked to this headphone" chip: only when the engine is playing to a real output
   const botaoVinc = () => { const n = cfg.porSaida && App.eqSaida.saida(); if (!n) return ''; const c = esc(curto(n)), on = E.alvo === n;
     return `<button class="bt vinc ${on ? 'seg' : ''}" data-vinc="1" title="${on ? `Este som (EQ, AutoEQ e Tone) é só do ${c}. Clique para voltar ao som geral.` : `Guarda este som (EQ, AutoEQ e Tone) só para o ${c}. Os outros aparelhos ficam com o som geral.`}">${UI.ico('fone')}${on ? 'Som do ' : 'Ligar ao '}${c}</button>`; };
-  App.detalhe({ id: cfg.id, montar(el) {
+  App.detalhe({ id: cfg.id, montar(el) { elEq = el;
     // parametric band area lives in eq-bandas.js (App.eqParam): html + live paint get these helpers
     const HH = () => ({ E, CORES, cor, TIPOS, MAXB, fader, knob, fmt, coef, Hc, tp: (t) => TIPOS.find((x) => x[0] === t)[1] });
     // full rebuild only for structure changes (mode, new band); entry animation only on first mount

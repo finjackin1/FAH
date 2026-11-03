@@ -18,10 +18,19 @@ static class Programa
             return 0;
         }
         if (args.Length >= 1 && args[0] == "--teste-mic") return TesteMic();   // tests: mic modules as loaded by the app (no device) -> log
+        // --esperar PID (restart after a backup import): wait for the old process to leave before taking the mutex
+        int ie = Array.IndexOf(args, "--esperar");
+        if (ie >= 0 && ie + 1 < args.Length)
+        {
+            if (int.TryParse(args[ie + 1], out var velho)) { try { using var p = System.Diagnostics.Process.GetProcessById(velho); p.WaitForExit(30000); } catch { } }
+            args = args.Where((_, i) => i != ie && i != ie + 1).ToArray();
+        }
+        bool bandeja = args.Contains("--bandeja");          // started by Windows: hidden in the tray (unless cfg.minimizado is off)
         using var unica = new Mutex(true, "FAH-instancia-unica", out bool primeira);
         if (!primeira) return 0;
         try
         {
+            Configuracoes.ImportarPendente();               // a backup chosen before the restart goes in before anything reads the state
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;   // no long blocking GC over the audio threads
             ApplicationConfiguration.Initialize();
             Application.ThreadException += (_, e) => Base.Log("erro: " + e.Exception);
@@ -29,7 +38,7 @@ static class Programa
             using var motor = new Motor();
             Base.Log($"aberto; módulos: {string.Join(", ", motor.Modulos.Select(m => m.Id))}");
             Task.Run(motor.Ligar);
-            Application.Run(new Janela(motor));
+            Application.Run(new Janela(motor, bandeja));
             return 0;
         }
         catch (Exception e)

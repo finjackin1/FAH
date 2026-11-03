@@ -34,7 +34,7 @@ sealed partial class Motor : IHost, IDisposable
         var erros = new List<string>();
         Modulos = Carregador.Carregar(Base.Modulos, erros);
         foreach (var e in erros) Log("módulo recusado: " + e);
-        foreach (var m in Modulos) { try { m.Iniciar(this); } catch (Exception e) { Log($"{m.Id}: {e.Message}"); } }
+        foreach (var m in Modulos) { try { m.Iniciar(this); } catch (Exception e) { Log($"{m.Id}: {e.Message}"); } ObservarPreparo(m); }
         Som.Definir(Modulos.SelectMany(m => m.Efeitos).Where(e => e.Lado == Lado.Som));
         Ordenar();
         IniciarMic();
@@ -306,6 +306,35 @@ sealed partial class Motor : IHost, IDisposable
 
     /// <summary>Notice for the UI (ui\base\ponte.js): tipo "toast" = short transient balloon, "erro" = red banner (click = retry).</summary>
     public void Aviso(string texto, string tipo = "toast") => Enviar("aviso", new { texto, tipo });
+
+    readonly List<string> pendentes = [];    // toasts raised before the page loaded (AoEnviar drops them)
+    bool paginaPronta;
+    /// <summary>Same as Aviso, but kept until the page is up (Janela calls PaginaPronta on NavigationCompleted).</summary>
+    void AvisoGuardado(string texto)
+    {
+        lock (pendentes) { if (!paginaPronta) { pendentes.Add(texto); return; } }
+        Aviso(texto);
+    }
+    public void PaginaPronta()
+    {
+        string[] fila;
+        lock (pendentes) { paginaPronta = true; fila = [.. pendentes]; pendentes.Clear(); }
+        foreach (var t in fila) Aviso(t);
+    }
+
+    /// <summary>A module may expose a public "Task Preparar()" (background load, e.g. Som 7.1 HRTF set). A fault there would be
+    /// lost silently, so the host watches the task: log line + toast. Reflection keeps it out of the contract and the module.</summary>
+    void ObservarPreparo(IModulo m)
+    {
+        if (m.GetType().GetMethod("Preparar", Type.EmptyTypes) is not { } mi || mi.ReturnType != typeof(Task)) return;
+        try { if (mi.Invoke(m, null) is Task t) t.ContinueWith(x => FalhaPreparo(m, x.Exception!.GetBaseException()), TaskContinuationOptions.OnlyOnFaulted); }
+        catch (Exception e) { FalhaPreparo(m, e.InnerException ?? e); }
+    }
+    void FalhaPreparo(IModulo m, Exception e)
+    {
+        Log($"{m.Id}: preparo falhou: {e.GetType().Name}: {e.Message}");
+        AvisoGuardado($"O {m.Nome} não carregou, então o som vai tocar sem ele. O motivo ficou no log do FAH.");
+    }
 
     /// <summary>Real output unplugged/invalidated while running (callback from NAudio's playback thread: only queue the work).
     /// No auto-reconnect: path closed, Windows default given back, red banner whose click is the normal "ligar" retry.</summary>
