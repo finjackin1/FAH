@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>FAH</title><link rel="icon" href="data:,">
+<!-- Modular draft (2026-10-26). Shell only: everything is a separate piece.
+  tema/*.css        look only (colors, radius, fonts, shadows) -> swap file = new look
+  base/layout.css   structure, uses only theme variables
+  base/nucleo.js    registry + navigation: App.lado / App.modulo / App.tela / App.dock
+  base/componentes.js  reusable controls (switch, slider, select, chips, card, icon)
+  telas/*.js        one file per screen;  modulos/*.js one file per module (later = 1 .dll)
+  dados/*.js        sample devices (later comes from the engine) -->
+<link rel="stylesheet" href="tema/apple.css" id="tema">
+<link rel="stylesheet" href="base/layout.css">
+<link rel="stylesheet" href="base/cabo.css">
+</head><body>
+<div id="app"><div class="palco" id="palco"></div><nav class="dock" id="dock"></nav></div>
+<script src="base/nucleo.js"></script>
+<script src="base/ponte.js"></script>
+<script src="base/barra.js"></script>
+<script src="base/cabo.js"></script>
+<script src="base/desvio.js"></script>
+<script src="base/componentes.js"></script>
+<script src="dados/dispositivos.js"></script>
+<script src="modulos/equalizador.js"></script>
+<script src="modulos/eq-bandas.js"></script>
+<script src="dados/autoeq.js"></script>
+<script src="modulos/autoeq.js"></script>
+<script src="modulos/efeitos.js"></script>
+<script src="modulos/efeitos71.js"></script>
+<script src="modulos/cancelar-ruido.js"></script>
+<script src="modulos/alterar-voz.js"></script>
+<script src="modulos/equalizador-mic.js"></script>
+<script src="telas/inicio.js"></script>
+<script src="telas/dispositivo.js"></script>
+<script src="telas/modulo.js"></script>
+<script src="telas/mixer.js"></script>
+<script src="telas/configuracoes.js"></script>
+<script>App.iniciar('inicio')</script>
+</body></html>

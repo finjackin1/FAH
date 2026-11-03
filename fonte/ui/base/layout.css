@@ -1,0 +1,83 @@
+/* Structure only. No raw colors/radius here: everything comes from tema/*.css variables. */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:var(--t-corpo) var(--fonte);overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased;letter-spacing:-.1px}
+#app{position:fixed;inset:0}
+.palco{position:absolute;inset:0;overflow:hidden}
+svg.ico{width:1em;height:1em}
+
+/* ---- screens (App.tela) ---- */
+.tela{position:absolute;inset:0;transition:opacity var(--t-tela-dur),transform var(--t-tela-dur) var(--curva);overflow:auto}
+.tela.fora{opacity:0;pointer-events:none;transform:scale(1.03)}
+.tela.fora *{pointer-events:none!important}   /* children with their own pointer-events:auto (Mixer banners) would still catch clicks over the visible screen */
+.tela.rolagem{padding:32px 40px}
+@keyframes entra{from{opacity:0;transform:translateY(14px)}}
+.entra{animation:entra .5s var(--curva) backwards}
+
+/* ---- components (base/componentes.js) ---- */
+.icone{display:grid;place-items:center;flex:none;color:#fff;border-radius:var(--r-icone);background:var(--grad,var(--ac))}
+.icone svg{width:55%;height:55%}
+.c-switch{width:42px;height:26px;border-radius:13px;background:var(--controle-forte);position:relative;cursor:pointer;transition:.25s;flex:none}
+.c-switch::after{content:"";position:absolute;left:2px;top:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15);transition:.25s var(--curva)}
+.c-switch.on{background:var(--ok)}.c-switch.on::after{left:18px}
+.c-slider{flex:1;margin:0 11px;height:4px;border-radius:2px;background:var(--controle-forte);position:relative;cursor:ew-resize}
+.c-slider::before{content:"";position:absolute;left:0;right:0;top:-10px;bottom:-10px}
+.c-slider .vu{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:rgba(255,255,255,.15);transition:width .1s}
+.c-slider .nv{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--ac)}
+.c-slider .nv::after{content:"";position:absolute;right:-11px;top:-9px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.c-select{color:var(--fg2);font-size:13px;cursor:pointer;display:inline-flex;vertical-align:middle;gap:6px;align-items:center;min-height:26px;padding:0 8px;margin:0 -8px;border-radius:var(--r-peq);transition:background .15s}
+.c-select:hover{background:var(--controle)}
+.c-select::after{content:"⌃⌄";font-size:9px;letter-spacing:-1px}
+.c-chips{display:flex;gap:6px;flex-wrap:wrap}
+.c-chips span{border-radius:20px;background:var(--controle);color:var(--fg);font-size:var(--t-menor);padding:5px 12px;cursor:pointer;transition:.2s}
+.c-chips span.on{background:var(--ac);color:#fff}
+.c-mudo{border:0;border-radius:50%;width:28px;height:28px;padding:0;background:var(--controle);color:var(--fg);cursor:pointer;display:grid;place-items:center;flex:none}
+.c-mudo svg{width:15px;height:15px}.c-mudo.on{background:var(--perigo)}
+.c-segmento{display:flex;background:var(--controle);border-radius:9px;padding:2px}
+.c-segmento button{white-space:nowrap;border:0;background:none;color:var(--fg);padding:5px 22px;border-radius:var(--r-peq);cursor:pointer;font:500 13px var(--fonte);transition:.25s}
+.c-segmento button.on{background:var(--segmento-on);box-shadow:var(--sombra-botao)}
+.c-linha{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;font-size:13px;box-shadow:inset 0 -.5px 0 var(--linha)}
+.c-linha:last-child{box-shadow:none}
+.c-linha.lg{flex-direction:column;align-items:flex-start;gap:8px;box-shadow:none}
+
+/* ---- dock (App.dock): floats over screens, no room reserved; base/desvio.js moves it to free spots ---- */
+.dock{position:absolute;left:50%;bottom:18px;transform:translate(calc(-50% + var(--dx,0px)),var(--dy,0px));transition:transform .6s var(--curva);display:flex;gap:4px;padding:6px;border-radius:var(--r-dock);background:var(--vidro);backdrop-filter:var(--vidro-blur);border:var(--borda-vidro);z-index:50}
+.dock button{width:48px;height:48px;border:0;border-radius:12px;background:none;color:var(--fg);cursor:pointer;display:grid;place-items:center;position:relative;transition:transform .25s var(--curva)}
+.dock button svg{width:24px;height:24px}
+.dock button:hover{transform:scale(1.12) translateY(-4px)}
+/* screen items (.ti): open screen = lit icon; switching sweeps a glow left to right, same look as the "7.1" toggle (efeitos71.js) */
+.dock .ti span{grid-area:1/1;display:grid;pointer-events:none}
+.dock .ti .b{color:var(--fg3)}
+.dock .ti .l{color:#ffb340;filter:drop-shadow(0 0 3px rgba(255,159,10,.95)) drop-shadow(0 0 9px rgba(255,159,10,.55));clip-path:inset(-40px calc(100% + 40px) -40px -40px)}
+.dock .ti .f{color:#fff6e0;filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 10px #ffb340);clip-path:inset(-40px calc(100% + 40px) -40px -40px);opacity:0}
+.dock .ti.on .l{clip-path:inset(-40px)}
+.dock .ti.acende .l{animation:dkOn .75s cubic-bezier(.45,0,.25,1) both}
+.dock .ti.apaga .l{animation:dkOff .75s cubic-bezier(.45,0,.25,1) both}
+.dock .ti.acende .f,.dock .ti.apaga .f{animation:dkF .75s cubic-bezier(.45,0,.25,1) both}
+@keyframes dkOn{from{clip-path:inset(-40px calc(100% + 40px) -40px -40px)}to{clip-path:inset(-40px)}}
+@keyframes dkOff{from{clip-path:inset(-40px)}to{clip-path:inset(-40px -40px -40px calc(100% + 40px))}}
+@keyframes dkF{0%{clip-path:inset(-40px calc(100% + 40px) -40px -30%);opacity:1}85%{opacity:1}100%{clip-path:inset(-40px -30% -40px calc(100% + 40px));opacity:0}}
+@media (prefers-reduced-motion:reduce){.dock .ti .l,.dock .ti .f{animation-duration:.01s!important}}
+.dock button:hover::after{content:attr(data-dica);position:absolute;bottom:62px;background:var(--vidro);backdrop-filter:var(--vidro-blur);padding:5px 10px;border-radius:6px;font-size:12px;white-space:nowrap}
+.dock.cima button:hover::after{bottom:auto;top:62px}
+/* ---- title bar (house pattern) ---- */
+.barra{position:absolute;left:0;right:0;top:0;height:40px;display:flex;z-index:60;background:var(--bg)}
+.b-arrasta{flex:1;display:flex;align-items:center;padding-left:16px}
+.b-nome{font-size:var(--t-menor);font-weight:600;color:var(--fg2);letter-spacing:.4px}
+.b-cel{width:34px;height:40px;border:0;padding:0;background:none;color:var(--fg2);display:grid;place-items:center;position:relative;cursor:pointer;overflow:hidden;transition:color .15s}
+.b-cel svg{width:16px;height:16px;position:relative;z-index:1}
+.b-cel:hover,.b-cel:focus-visible{color:var(--fg)}
+.b-cel:focus-visible{outline:2px solid var(--fg3);outline-offset:-3px}
+.b-fechar{width:40px}
+.b-enche{position:absolute;inset:4px;border-radius:8px;background:#C42B1C;box-shadow:0 0 14px rgba(196,43,28,.6);transform:scale(var(--p,0));opacity:0}
+.b-fechar.segura .b-enche{opacity:1}
+.b-fechar.segura{color:#fff}
+.b-max .b-enche{background:var(--mic);box-shadow:0 0 14px color-mix(in srgb,var(--mic) 60%,transparent)}.b-max.segura .b-enche{opacity:1}.b-max.segura{color:#fff}
+.b-dica{position:fixed;z-index:99;background:var(--bg2);border:var(--borda-vidro);border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;font-size:var(--t-menor);color:var(--fg2);opacity:0;transform:translateY(-4px);transition:opacity .2s,transform .2s;pointer-events:none}
+.b-dica.on{opacity:1;transform:none}
+.b-dica b{color:var(--fg);font-size:11px;letter-spacing:.5px}
+.palco{top:40px}
+/* thin themed scrollbar (never browser default) */
+*{scrollbar-width:thin;scrollbar-color:var(--bg3) transparent}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:4px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--segmento-on);background-clip:padding-box}

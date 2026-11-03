@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF only for UI Automation (Barra.cs reads the taskbar icons) -->
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>FAH</AssemblyName>
+    <RootNamespace>FAH</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- program icon (same as the old FAH): exe, taskbar, window and tray -->
+    <ApplicationIcon>fah.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
+    <ProjectReference Include="..\FAH.Contrato\FAH.Contrato.csproj" />
+    <ProjectReference Include="..\FAH.Audio\FAH.Audio.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- approved screens (HTML) ship next to the exe -->
+    <None Include="..\ui\**\*" LinkBase="ui" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="fah.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

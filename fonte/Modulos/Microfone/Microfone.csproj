@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>FAH.Microfone</AssemblyName>
+    <RootNamespace>FAH.Microfone</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\FAH.Contrato\FAH.Contrato.csproj" Private="false" />
+    <!-- DeepFilterNet3 noise suppressor runs on ONNX Runtime (MIT) -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
+    <!-- DeepFilterNet3 streaming export (MIT/Apache, huggingface kimtos-labs/denoiser-dfn3) -->
+    <EmbeddedResource Include="dados\dfn3.onnx" LogicalName="dfn3.onnx" />
+    <!-- 31/10 Silero VAD v5 (MIT, github snakers4/silero-vad): the voice gate's speech detector -->
+    <EmbeddedResource Include="dados\silero_vad.onnx" LogicalName="silero_vad.onnx" />
+  </ItemGroup>
+  <!-- module .dll + its ONNX Runtime (managed + native) go to the host's modulos\ folder -->
+  <Target Name="CopiaParaHost" AfterTargets="Build">
+    <ItemGroup>
+      <Ort Include="$(NuGetPackageRoot)microsoft.ml.onnxruntime.managed\1.31.1\lib\net8.0\Microsoft.ML.OnnxRuntime.dll" />
+      <Ort Include="$(NuGetPackageRoot)microsoft.ml.onnxruntime\1.31.1\runtimes\win-x64\native\onnxruntime.dll" />
+      <Ort Include="$(NuGetPackageRoot)microsoft.ml.onnxruntime\1.31.1\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
+      <Ort Include="$(NuGetPackageRoot)system.numerics.tensors\9.0.0\lib\net9.0\System.Numerics.Tensors.dll" />
+      <Ort Include="dados\dfn3-LICENSE.txt" />
+      <Ort Include="dados\silero-LICENSE.txt" />
+    </ItemGroup>
+    <Copy SourceFiles="$(TargetPath);@(Ort)" DestinationFolder="$(MSBuildThisFileDirectory)..\..\FAH\bin\$(Configuration)\net10.0-windows\modulos" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

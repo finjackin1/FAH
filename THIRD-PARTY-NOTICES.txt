@@ -1,0 +1,82 @@
+FAH - Avisos de terceiros
+=========================
+
+O FAH usa os componentes abaixo. Cada um continua sob a licenca do seu
+autor. O FAH em si e distribuido sob a GNU General Public License v3.0
+(arquivo LICENSE).
+
+
+1. BIBLIOTECAS (distribuidas junto com o programa)
+--------------------------------------------------
+
+.NET 10 Runtime, Windows Forms, WPF
+  MIT License
+  Copyright (c) .NET Foundation and Contributors
+  https://github.com/dotnet/runtime
+
+NAudio.Core e NAudio.Wasapi 2.2.1
+  MIT License
+  Copyright (c) Mark Heath and contributors
+  https://github.com/naudio/NAudio
+
+Microsoft.Web.WebView2 1.0.3537.50
+  Licenca estilo BSD da Microsoft (LICENSE.txt do pacote NuGet)
+  Copyright (C) Microsoft Corporation
+  https://www.nuget.org/packages/Microsoft.Web.WebView2
+
+ONNX Runtime 1.31.1
+  MIT License
+  Copyright (c) Microsoft Corporation
+  https://github.com/microsoft/onnxruntime
+  Avisos das dependencias: modulos/onnxruntime-ThirdPartyNotices.txt
+
+System.Numerics.Tensors 9.0.0
+  MIT License
+  Copyright (c) .NET Foundation and Contributors
+  https://github.com/dotnet/runtime
+
+Microsoft Visual C++ Runtime (msvcp140, msvcp140_1, vcruntime140, vcruntime140_1)
+  Arquivos redistribuiveis do Visual Studio, licenca da Microsoft
+  Copyright (C) Microsoft Corporation
+
+
+2. MODELOS
+----------
+
+DeepFilterNet3 (dfn3.onnx, limpeza do microfone)
+  MIT License (dupla com Apache 2.0)
+  Copyright (c) 2021 Hendrik Schroeter
+  https://github.com/Rikorose/DeepFilterNet
+  Texto completo: modulos/dfn3-LICENSE.txt
+
+Silero VAD v5 (silero_vad.onnx, deteccao de voz)
+  MIT License
+  Copyright (c) 2020-present Silero Team
+  https://github.com/snakers4/silero-vad
+  Texto completo: modulos/silero-LICENSE.txt
+
+
+3. DADOS
+--------
+
+AutoEq (lista de correcoes por fone, ui/dados/autoeq.js)
+  MIT License
+  Copyright (c) Jaakko Pasanen
+  https://github.com/jaakkopasanen/AutoEq
+
+MIT KEMAR (medicoes de cabeca, Som 7.1)
+  Bill Gardner e Keith Martin, MIT Media Lab, 1994
+  https://sound.media.mit.edu/resources/KEMAR.html
+
+SADIE II (medicoes de cabeca, Som 7.1)
+  Apache License 2.0
+  University of York
+  https://www.york.ac.uk/sadie-project/database.html
+
+
+4. MARCAS
+---------
+
+Virtual Audio Cable, VB-CABLE e Voicemeeter pertencem aos seus donos. O
+FAH usa esses cabos virtuais, mas nao tem ligacao com os fabricantes e
+nao distribui nenhum deles.

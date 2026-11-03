@@ -1,0 +1,22 @@
+# Whitelist: only what is listed here is versioned. re, alvos, apks, legado, backup, docs, dist never leave this PC.
+/*
+!/fonte/
+!/ferramentas/
+!/README.md
+!/LICENSE
+!/THIRD-PARTY-NOTICES.txt
+!/.gitignore
+!/.gitattributes
+bin/
+obj/
+__pycache__/
+*.user
+*.suo
+.vs/
+*.log
+*.bak
+*.zip
+*.rar
+/fonte/--*
+/fonte/-nologo
+.playwright-cli/

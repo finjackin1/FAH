@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>FAH.Efeitos</AssemblyName>
+    <RootNamespace>FAH.Efeitos</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\FAH.Contrato\FAH.Contrato.csproj" Private="false" />
+  </ItemGroup>
+  <!-- module .dll goes to the host's modulos\ folder -->
+  <Target Name="CopiaParaHost" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildThisFileDirectory)..\..\FAH\bin\$(Configuration)\net10.0-windows\modulos" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
