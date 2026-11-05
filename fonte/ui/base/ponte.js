@@ -13,7 +13,7 @@
   wv.addEventListener('message', (e) => { const { tipo, dados } = e.data || {}; if (!tipo) return;
     App.estado[tipo] = dados; dispatchEvent(new CustomEvent('fah:' + tipo, { detail: dados }));
     if (tipo === 'motor') aviso(dados);
-    else if (tipo === 'mic') aviso(dados, 'mic', 88, 'micligar');
+    else if (tipo === 'mic') aviso(dados && dados.semCabo ? {} : dados, 'mic', 88, 'micligar');   // missing 2nd cable = greyed mic switch, not an error
     else if (tipo === 'aviso' && dados && dados.texto) { if (dados.tipo === 'erro') aviso({ erro: dados.texto }); else if (App.toast) App.toast(dados.texto, 5000); } });
   // engine problem = one line at the top (plain sentence, no code); one line per source (motor / mic), click = that source's retry
   const aviso = (m, id = 'motor', topo = 50, retry = 'ligar') => { let el = document.getElementById('aviso-' + id);

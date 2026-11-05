@@ -10,7 +10,7 @@
     <ProjectReference Include="..\FAH.Contrato\FAH.Contrato.csproj" />
     <ProjectReference Include="..\FAH.Audio\FAH.Audio.csproj" />
     <ProjectReference Include="..\Modulos\Equalizador\Equalizador.csproj" />
-    <ProjectReference Include="..\Modulos\Efeitos\Efeitos.csproj" />
+    <ProjectReference Include="..\Modulos\Efeitos\Efeitos.csproj" Aliases="efx" />
     <ProjectReference Include="..\Modulos\Espacial\Espacial.csproj" />
     <ProjectReference Include="..\Modulos\Microfone\Microfone.csproj" />
   </ItemGroup>

@@ -114,7 +114,7 @@ sealed partial class Motor : IHost, IDisposable
     {
         var antes = Cabo;
         Cabos.Log = antes == null ? Log : null;
-        var a = Cabos.Detectar();
+        var a = LigarOutroLado(Cabos.Detectar());
         Cabos.Log = null;
         if (antes != null && (antes.Estado != a.Estado || antes.Cabo?.Tocar.Nome != a.Cabo?.Tocar.Nome)) Log($"cabo: {a.Estado} {a.Cabo?.Tocar.Nome ?? a.Marca} {a.Detalhe}".TrimEnd());
         Cabo = a;
@@ -127,6 +127,27 @@ sealed partial class Motor : IHost, IDisposable
         var a = Cabo;
         if (a == null) return;
         Enviar("cabo", new { estado = a.Estado, marca = a.Cabo?.Marca ?? a.Marca, nome = a.Cabo?.Tocar.Nome, desativados = a.Desativados, vac = a.Cabo?.Vac ?? false });
+    }
+
+    string? caboLigado;     // cable Som opened last (only read while Som is on; the 7.1 switch reopens the same one)
+
+    /// <summary>"Verificar de novo" / cable screen: re-detects and applies the difference. Som the user turned off stays off;
+    /// a new cable takes over only what depends on it (Cabos.Replanejar).</summary>
+    public void RefazerCabo()
+    {
+        lock (trava)
+        {
+            if (encerrando) return;
+            bool tinha = Cabo?.Cabo != null;
+            var a = ConferirCabo();
+            var p = Cabos.Replanejar(tinha, a.Cabo?.Tocar.Id, Ligado, caboLigado, caboMic?.Tocar.Id, SemCaboMic);
+            if (p.RefazerMic) { Log("cabo do microfone passou para o som, procurando outro"); FecharMic(); guardaMic.Devolver(); }
+            if (p.TrocarSom) { Log($"cabo do som trocado para {a.Cabo!.Tocar.Nome}"); Fechar(); guarda.Devolver(); }
+            if (p.TrocarSom || p.LigarSom) Ligar();
+            if (p.LigarMic) LigarMic();
+        }
+        Cabo71Status();
+        StatusMic();
     }
 
     public bool Ligar() => Ligar(false);
@@ -149,13 +170,13 @@ sealed partial class Motor : IHost, IDisposable
             var ultima = estado.TryGetValue("saida", out var us) && us.ValueKind == JsonValueKind.String ? us.GetString() : null;
             var saida = pad ?? reais.FirstOrDefault(a => a.Nome == ultima) ?? reais.FirstOrDefault();
             if (saida == null) return Falha("Nenhuma saída de som real encontrada.");
-            if (!religar && cb.Vac) Garantir71(cabo.Nome, captar);
+            if (!religar && cb.Vac) Garantir71(cabo, captar);
             try
             {
                 var d = new Destino(saida.Nome); d.AoPerder = x => PerdeuSaida(d, x); d.Abrir(); destinos.Add(d);
                 if (!religar && d.CanaisReais > 2) Aviso("Essa saída tem mais de 2 canais: o som toca só na frente esquerda e direita.");
                 if (saida.Nome != ultima) lock (tEstado) { estado["saida"] = JsonSerializer.SerializeToElement(saida.Nome); Base.GravarEstado(estado); }
-                var f = new Fluxo(captar, Som, cb.Loopback); f.AoPerder = x => PerdeuCabo(f, x); f.DefinirDestinos(destinos); f.Abrir(); fluxo = f;
+                var f = new Fluxo(captar, Som, cb.Loopback); f.AoPerder = x => PerdeuCabo(f, x); f.DefinirDestinos(destinos); f.Abrir(); fluxo = f; caboLigado = cabo.Id;
                 PrenderChamadas(saida);
                 guarda.Trocar(cabo.Id, saida.Id);
                 if (encerrando) guarda.Devolver();          // exit's restore ran while we were switching: undo ours
@@ -178,22 +199,60 @@ sealed partial class Motor : IHost, IDisposable
     /// <summary>Cable always 7.1 (switch removed 28/10), both sides checked on every open. 01/11: play side stuck at 2 ch while
     /// capture was 8, and only capture was looked at: games got stereo, for days. Runs before FAH opens the cable and makes it the
     /// default, so nothing is playing through it and nothing gets cut. Not in simulation (Windows untouched there).</summary>
-    void Garantir71(string tocar, string captar)
+    void Garantir71(Aparelho cabo, string captar)
     {
         if (Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO") != null) return;
         try
         {
+            // 04/11: VAC Lite (stereo only) and a refused/failed switch asked again on every start. Lite: never tried.
+            // Failed once on this cable: not at start any more (status explains it, the 7.1 card can still retry).
+            if (!Surround71.Suporta(cabo.Nome)) { Log("cabo 7.1: este cabo não tem 7.1 (" + cabo.Nome + "), sem tentar"); return; }
             Surround71.Log = Log;
-            var e = Surround71.Estado(tocar, captar);
-            if (e.Tocar == 8 && e.Captar == 8) return;
+            var e = Surround71.Estado(cabo.Nome, captar);
+            if (e.Tocar == 8 && e.Captar == 8) { Marcar71(cabo.Id, true); return; }
+            if (Falhou71(cabo.Id)) { Log("cabo 7.1: administrador recusado antes neste cabo, não pergunto de novo ao abrir"); return; }
             Log($"cabo 7.1: Windows com tocar {e.Tocar} e captar {e.Captar} canais, corrigindo");
             Aviso("O FAH está colocando o cabo em 7.1. Se o Windows pedir permissão, aceite.", "toast");
-            Log("cabo 7.1: " + Surround71.Ativar(tocar, captar, true).msg);
+            var r = Surround71.Ativar(cabo.Nome, captar, true);
+            Log("cabo 7.1: " + r.msg);
+            Lembrar71(cabo.Id, r);
         }
         catch (Exception x) { Log("cabo 7.1: " + x.Message); }
     }
 
-    const string ChaveCabo = "cabo71liga";
+    /// <summary>Only a refused/failed admin step is remembered (transient failures retry on the next start); success clears it.</summary>
+    void Lembrar71(string id, (bool ok, string msg) r)
+    {
+        if (r.ok) Marcar71(id, true); else if (r.msg == Surround71.SemAdmin) Marcar71(id, false);
+    }
+
+    const string ChaveCabo = "cabo71liga", ChaveFalhou = "cabo71falhou";
+
+    bool Falhou71(string id)
+    {
+        lock (tEstado) return estado.TryGetValue(ChaveFalhou, out var v) && v.ValueKind == JsonValueKind.String && v.GetString() == id;
+    }
+
+    void Marcar71(string id, bool ok)
+    {
+        lock (tEstado)
+        {
+            if (ok == !Falhou71(id)) return;
+            if (ok) estado.Remove(ChaveFalhou); else estado[ChaveFalhou] = JsonSerializer.SerializeToElement(id);
+            Base.GravarEstado(estado);
+        }
+    }
+
+    /// <summary>Why this cable gets no 7.1 from games (null = it can). Shown greyed on the 7.1 card, never as an error toast.</summary>
+    string? Motivo71(Cabo? c)
+    {
+        if (c == null) return null;
+        if (!c.Vac) return $"O {c.Marca} só passa estéreo. Para os jogos mandarem 7.1, instale o Virtual Audio Cable (versão completa). O Som 7.1 continua funcionando a partir do estéreo.";
+        if (Surround71.Lite(c.Tocar.Nome)) return "O Virtual Audio Cable Lite só passa estéreo. A versão completa do Virtual Audio Cable recebe 7.1 dos jogos. O Som 7.1 continua funcionando a partir do estéreo.";
+        // no API: Lite under another name, or the full driver not answering
+        if (!Surround71.TemApi()) return "Este Virtual Audio Cable não deixa o FAH mudar para 7.1. Se for a versão Lite, ela só passa estéreo; se for a completa, reinstale o Virtual Audio Cable. O Som 7.1 continua funcionando a partir do estéreo.";
+        return null;
+    }
 
     /// <summary>"Jogos e filmes mandam 7.1" switch. Cable stays 8 ch once there (28/10, user wanted no cut at all): on/off only
     /// flips Som.Estereo (fold to stereo inside FAH), no Windows format change, so the playing app is never interrupted.
@@ -202,7 +261,7 @@ sealed partial class Motor : IHost, IDisposable
     {
         lock (tEstado) { estado[ChaveCabo] = JsonSerializer.SerializeToElement(on); Base.GravarEstado(estado); }
         Som.Estereo = !on;
-        if (Cabo?.Cabo is { Vac: false }) { Log("cabo 7.1: só o Virtual Audio Cable muda para 7.1 (" + Cabo.Cabo.Marca + ")"); Cabo71Status(); return; }
+        if (Motivo71(Cabo?.Cabo) != null) { Log("cabo 7.1: este cabo não muda para 7.1 (" + Cabo!.Cabo!.Tocar.Nome + ")"); Cabo71Status(); return; }
         var (cb, cp) = AcharCabo();
         var e = cb == null ? null : Surround71.Estado(cb.Nome, cp);
         if (!on || (e != null && e.Tocar == 8 && e.Captar == 8))
@@ -243,7 +302,8 @@ sealed partial class Motor : IHost, IDisposable
             else if (estava) { Fechar(); religar = true; }
             tReabrir = sw.ElapsedMilliseconds;
             r = Surround71.Conferir(cabo.Nome, captar, on);
-            if (!r.ok && !trocou && on) r = (false, "Precisa da permissão de administrador (o Windows pergunta uma vez)");
+            if (!r.ok && !trocou && on) r = (false, Surround71.SemAdmin);
+            if (on) Lembrar71(cabo.Id, r);
         }
         if (religar) Ligar(true);
         Log($"cabo 7.1: {r.msg} (silêncio {tReabrir - tPrep} ms: fechar {tFechar - tPrep}, formato {tCabo - tFechar}, reabrir {tReabrir - tCabo}; antes {tPrep}, total {sw.ElapsedMilliseconds})");
@@ -254,7 +314,7 @@ sealed partial class Motor : IHost, IDisposable
     {
         try
         {
-            if (Cabo?.Cabo is { Vac: false } o) { Enviar("cabo71", new { on = false, canais = 2, erro = "Só o Virtual Audio Cable tem Som 7.1 vindo dos jogos (seu cabo: " + o.Marca + ")", vac = false }); return; }
+            if (Motivo71(Cabo?.Cabo) is { } motivo) { Enviar("cabo71", new { on = false, canais = 2, suporte = false, motivo }); return; }
             var (cabo, captar) = AcharCabo();
             if (cabo == null) return;
             var e = Surround71.Estado(cabo.Nome, captar);

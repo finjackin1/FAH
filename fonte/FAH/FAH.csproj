@@ -8,11 +8,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>FAH</AssemblyName>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <RootNamespace>FAH</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- program icon (same as the old FAH): exe, taskbar, window and tray -->
     <ApplicationIcon>fah.ico</ApplicationIcon>
+    <!-- tidy install folder: publish = one FAH.exe (runtime + WebView2Loader inside), only pt-BR resources, no loose pdb/xml -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <DebugType>embedded</DebugType>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
   </PropertyGroup>
   <ItemGroup>
     <Using Include="System.IO" />
@@ -23,6 +29,6 @@
   <ItemGroup>
     <!-- approved screens (HTML) ship next to the exe -->
     <None Include="..\ui\**\*" LinkBase="ui" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="fah.ico" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="fah.ico" Link="ui\fah.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 </Project>

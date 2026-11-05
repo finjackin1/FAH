@@ -34,9 +34,9 @@ def main(saida, dotnet="dotnet"):
         shutil.copy2(sistema / dll, modulos / dll)
 
     for arq in app.rglob("*"):
-        if arq.suffix.lower() in (".pdb", ".xml"):
+        if arq.suffix.lower() in (".pdb", ".xml") or arq.name.lower() == "createdump.exe":
             arq.unlink()
-    for pasta in ("config", "dados", "webview", "relatorios"):
+    for pasta in ("usuario", "config", "dados", "webview", "relatorios", "backup"):
         if (app / pasta).exists():
             shutil.rmtree(app / pasta)
     shutil.copy2(RAIZ / "LICENSE", app / "LICENSE.txt")
@@ -46,10 +46,14 @@ def main(saida, dotnet="dotnet"):
         shutil.copy2(pacote, modulos / "onnxruntime-ThirdPartyNotices.txt")
 
     faltando = [n for n in ["FAH.exe", "modulos/FAH.Espacial.dll", "modulos/FAH.Microfone.dll", "modulos/FAH.Equalizador.dll",
-                            "modulos/FAH.Efeitos.dll", "modulos/onnxruntime.dll", "ui/index.html", "ui/dados/autoeq.js"]
+                            "modulos/FAH.Efeitos.dll", "modulos/onnxruntime.dll", "ui/index.html", "ui/dados/autoeq.js", "ui/fah.ico"]
                 if not (app / n).exists()]
     if faltando:
         sys.exit(f"faltando no pacote: {faltando}")
+    soltos = sorted(a.name for a in app.iterdir() if a.is_file() and a.name not in ("FAH.exe", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt"))
+    soltos += sorted(a.name + "/" for a in app.iterdir() if a.is_dir() and a.name not in ("modulos", "ui"))
+    if soltos:
+        sys.exit(f"arquivos soltos na raiz (esperado so FAH.exe, modulos, ui, licencas): {soltos}")
 
     with zipfile.ZipFile(saida / "FAH-win-x64.zip", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for arq in sorted(app.rglob("*")):

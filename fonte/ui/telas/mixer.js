@@ -449,12 +449,12 @@
         c[x] = on ? [...new Set([...clonesDe(x), ap])] : clonesDe(x).filter((y) => y !== ap); if (!c[x].length) delete c[x]; manda({ tipo: 'clonar', x, ap, on }); };
       const injetar = (x, on) => { const m = (App.estado.mic = { ...(App.estado.mic || {}) }); m.injeta = on ? [...new Set([...injetados(), x])] : injetados().filter((y) => y !== x);
         manda({ tipo: 'micinjetar', x, on });
-        if (on && !m.ligado) { if (real) manda({ tipo: 'micligar' }); App.toast?.('Liguei o microfone do FAH: quem está na chamada ouve junto com a sua voz'); } };
+        if (on && !m.ligado) { if (real) manda({ tipo: 'micligar' }); App.toast?.(m.semCabo ? m.erro || 'Falta um cabo virtual para o microfone' : 'Liguei o microfone do FAH: quem está na chamada ouve junto com a sua voz', m.semCabo ? 5000 : undefined); } };
       const alvos = () => { const { a, de } = arr, cp = arr.alt && a.lado === 'som' && !a.c, aqui = de || padrao('som'); arr.cp = cp; arr.f.classList.toggle('cp', cp);
         el.querySelectorAll('.tira,.agora').forEach((t) => t.classList.remove('alvo', 'nao', 'sobre'));
         el.querySelectorAll('.tira').forEach((t) => { const d = acha(t.dataset.k), mic = t.dataset.lado === 'mic'; let ok;
           // a sound program onto the mic side: the default mic (banner, or its row below) = into the call, Alt or not; other mics: not yet (needs a 3rd cable)
-          if (mic && a.lado === 'som' && !a.c) ok = t.classList.contains('band') && !injetado(a.x);
+          if (mic && a.lado === 'som' && !a.c) ok = t.classList.contains('band') && !injetado(a.x) && !App.estado.mic?.semCabo;
           else if (cp) ok = d !== aqui && !clonado(a.x, d.n);
           else if (a.c) ok = !a.mi && !mic && d !== de && d !== ondeToca(a.x) && !clonado(a.x, d.n);
           else { if (t.dataset.k === de?.k) return; ok = t.dataset.lado === a.lado && (de || !t.classList.contains('band')); }

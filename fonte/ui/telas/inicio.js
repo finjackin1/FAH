@@ -19,6 +19,8 @@
   .t-inicio .pilula:hover{background:var(--controle-forte)}.t-inicio .pilula:active{transform:scale(.97)}
   .t-inicio .pilula svg{width:16px;height:16px;color:var(--fg2)}
   .t-inicio .pilula[disabled]{opacity:.4;pointer-events:none}
+  .t-inicio .pilula.apagada{opacity:.4;cursor:default}.t-inicio .pilula.apagada:hover{background:var(--controle);transform:none}
+  .t-inicio .res2[data-dica]{cursor:help}
   .t-inicio .pilula .pt{width:8px;height:8px;border-radius:50%;background:var(--fg3);transition:background .25s,box-shadow .25s}
   .t-inicio .pilula.on .pt{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .t-inicio .pilula.espera .pt{animation:i-pulsa 1s infinite}
@@ -48,6 +50,9 @@
   .t-inicio .no .res2{font-size:12px;color:var(--fg2);line-height:16px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t-inicio .no.off{background:rgba(44,44,46,.35);box-shadow:inset 0 0 0 1px var(--linha)}
   .t-inicio .no.off .vis{opacity:.3;filter:grayscale(1)}.t-inicio .no.off .res{color:var(--fg2)}
+  /* needs a cable that is not there (04/11): dimmed, whole card is the target (nested tips, switch and mode button off) */
+  .t-inicio .no.sem-cabo{opacity:.4;cursor:default}.t-inicio .no.sem-cabo:hover,.t-inicio .no.sem-cabo:active{transform:none;box-shadow:none;background:var(--bg2)}
+  .t-inicio .no.sem-cabo.off:hover{background:rgba(44,44,46,.35)}.t-inicio .no.sem-cabo>*{pointer-events:none}
   .t-inicio .b.cmp .no.mod,.t-inicio .b.desl .no.mod{opacity:.35}
   .t-inicio .b.desl .no.ponta .vis{filter:grayscale(1);opacity:.5}
   .t-inicio .ponta{cursor:default}.t-inicio .ponta:hover{transform:none;box-shadow:none;background:var(--bg2)}
@@ -117,8 +122,6 @@
   const X = [52, 268, 652, 1060], LW = [168, 360, 360, 168], CY = 132 + 120, VW = LW[1] - 32, VH = 104;
   const MX = [52, 268, 532, 796, 1060], MW = [168, 216, 216, 216, 168], MVW = MW[1] - 32;
   const CH71 = [['FL', -30], ['C', 0], ['FR', 30], ['SR', 100], ['RR', 140], ['RL', -140], ['SL', -100], ['LFE', null]];
-  // Efeitos scenes = the module's own drawings (Efx.VISTAS), drawn at a fixed size and shrunk
-  const cena = (k) => `<svg viewBox="0 0 256 146">${Efx.VISTAS[k](256, 146).replace(/class="fio/g, 'class="mfio')}</svg>`;
   const lista = (l) => new Intl.ListFormat('pt-BR').format(l);
   const curva = (g, w = VW, h = VH, esc = 12) => { if (!g || g.length < 2) g = [0, 0]; const pts = g.map((v, i) => [i / (g.length - 1) * w, Math.max(2, Math.min(h - 2, h / 2 - v / esc * (h / 2)))]);
     let d = `M0 ${pts[0][1]}`; for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2; d += ` C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`; } return d; };
@@ -141,16 +144,8 @@
         const x = a === null ? cx + rx * .45 : cx + Math.sin(r) * rx, y = a === null ? cy + ry * .45 : cy - Math.cos(r) * ry;
         return `<i class="cx71 ${s.mudo?.[id] ? 'mudo' : ''}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px">${id}</i>`; }).join('');
       return ['sur', 'Som 7.1', `<i class="anel71" style="width:${rx * 2}px;height:${ry * 2}px"></i><i class="anel71" style="width:${rx * 1.1}px;height:${ry * 1.1}px"></i><div class="cab71">☺</div>${cxs}`,
-        (s.auto ? 'Automático' : 'Manual') + ' · ' + ((s.auto && S.s71auto?.perfil) || s.perfil || 'Jogo'), c && c.erro ? 'Cabo fora do 7.1' : [s.voz && 'Voz reforçada', s.sub && 'Graves no sub'].filter(Boolean).join(' · ') || 'Sem reforços', '.sala']; },
-    // Efx is a top-level const of efeitos.js (not on window): reading window.Efx always fell back to "Médio"
-    efeitos: () => { const e = S.efeitos || {}, est = e.est || {}, cf = e.cf || {}, rv = e.rv || {}, s71 = on('som71');
-      const nivel = Efx.NIVEIS.find((n) => n[0] === cf.nivel)?.[1] || 'Médio', pausa = !!cf.on && s71, lpausa = s71 && !!est.on && !est.mono && (est.larg ?? 100) !== 100;
-      const it = [['est', 'Estéreo', est.on ? (est.mono ? 'Mono' : lpausa ? 'Largura pausada' : `Largura ${est.larg ?? 100}%`) : 'Desligado', !!est.on],
-        ['cf', 'Crossfeed', !cf.on ? 'Desligado' : pausa ? nivel + ' · pausado' : nivel, !!cf.on && !s71], ['rv', 'Reverb', rv.on ? rv.preset || 'Ligado' : 'Desligado', !!rv.on]];
-      const lig = it.filter((x) => x[3]).map((x) => x[1]);
-      return ['efeitos', 'Efeitos', it.map(([k, n, v, o]) => `<div class="fx ${o ? 'on' : ''}"${k === 'cf' && pausa ? ' data-dica="Crossfeed pausado|O Som 7.1 já faz isso. Volta sozinho quando o Som 7.1 é desligado."' : k === 'est' && lpausa ? ' data-dica="Largura pausada|Por cima do Som 7.1 ela espalha o som e as caixas perdem o lugar. Volta sozinha quando o Som 7.1 é desligado."' : ''}>
-        <span class="mini" data-voa="[data-v=${k}]">${cena(k)}</span><div><b>${n}</b><small>${q(v)}</small></div></div>`).join(''),
-        lig.length ? lista(lig) : 'Nenhum ligado', pausa && lpausa ? 'Crossfeed e largura pausados pelo Som 7.1' : pausa ? 'Crossfeed pausado pelo Som 7.1' : lpausa ? 'Largura pausada pelo Som 7.1' : `${lig.length} de 3 ligados`, '', 'fxs']; },
+        (s.auto ? 'Automático' : 'Manual') + ' · ' + ((s.auto && S.s71auto?.perfil) || s.perfil || 'Jogo'), c && c.suporte === false ? 'Jogos chegam em estéreo' : c && c.erro ? 'Cabo fora do 7.1' : [s.voz && 'Voz reforçada', s.sub && 'Graves no sub'].filter(Boolean).join(' · ') || 'Sem reforços', '.sala', '', c && c.suporte === false ? 'Seu cabo não recebe 7.1|' + c.motivo : '']; },
+    // efeitos = Estéreo+ card (04/11), built whole by modulos/estereo.js (Est.html)
   };
   // mic path (em breve), same 5 places
   const sv = (d) => `<svg class="full" viewBox="0 0 ${MVW} ${VH}" preserveAspectRatio="none"><path class="zero" d="M0 ${VH / 2}H${MVW}"/><path class="cvm" d="${d}"/></svg>`;
@@ -175,12 +170,14 @@
   };
   const mic = () => S.mic || {};
   const micLig = () => !!mic().ligado;
+  const motivoMic = () => mic().erro || 'Falta um cabo virtual para o microfone';
+  const motivoSom = () => App.cabo.motivo() + ': o som do PC só passa por aqui com um cabo virtual.';
   // "Line 2 (Virtual Audio Cable)" -> "Line 2"
   const curto = (n) => /^(.*?)\s*\((.+)\)$/.exec(n || '')?.[1] || n || '';
   function noM(i, id) {
-    const [ic, nome, vis, r1, r2] = MODM[id](), o = on(id);
-    return `<div class="no mod sobe ${o ? '' : 'off'}" tabindex="0" data-card="${id}" data-lado="mic" style="left:${MX[i]}px;width:${MW[i]}px;animation-delay:${.06 + i * .05}s"
-      data-dica="${nome}|Clique: abre · Chave: liga ou desliga|Desligado, a voz passa direto por aqui">
+    const [ic, nome, vis, r1, r2] = MODM[id](), o = on(id), sem = !!mic().semCabo && !micLig();
+    return `<div class="no mod sobe ${o ? '' : 'off'}${sem ? ' sem-cabo' : ''}" tabindex="0" data-card="${id}" data-lado="mic" style="left:${MX[i]}px;width:${MW[i]}px;animation-delay:${.06 + i * .05}s"
+      data-dica="${sem ? `${nome}|${q(motivoMic())}` : `${nome}|Clique: abre · Chave: liga ou desliga|Desligado, a voz passa direto por aqui`}">
       <div class="t">${ico(ic).replace('<svg', '<svg data-voa="header .icone"')}<b data-voa="header h2">${nome}</b><button class="chave ${o ? 'on' : ''}" data-voa="header .c-switch" data-chave="${id}" aria-label="${nome}: ${o ? 'ligado' : 'desligado'}"></button></div>
       <div class="vis">${vis}</div><div class="res">${o ? q(r1) : 'Desligado'}</div><div class="res2">${o ? q(r2) : 'A voz passa direto'}</div></div>`;
   }
@@ -198,7 +195,7 @@
 
   let el = null;
   function fio() {
-    const ini = X[0] + LW[0], fim = X[3], seg = (i) => `M${X[i] + LW[i]} ${CY}H${X[i + 1]}`, erro = motor().erro && !ligado();
+    const ini = X[0] + LW[0], fim = X[3], seg = (i) => `M${X[i] + LW[i]} ${CY}H${X[i + 1]}`, erro = motor().erro && !ligado() && !App.cabo.semSom();
     if (V.vista === 'mic') { const a = MX[0] + MW[0], z = MX[4], sg = (i) => `M${MX[i] + MW[i]} ${CY}H${MX[i + 1]}`;
       return micLig() ? `<svg class="fio" viewBox="0 0 1280 680"><path class="base" d="M${a} ${CY}H${z}"/>${[0, 1, 2, 3].map((i) => `<path class="corre m" d="${sg(i)}"/>`).join('')}</svg>`
         : `<svg class="fio" viewBox="0 0 1280 680"><path class="ghost m" d="M${a} ${CY}H${z}"/></svg>`; }
@@ -211,31 +208,35 @@
 </svg>`;
   }
   function no(i, id) {
-    const [ic, nome, vis, r1, r2, voa = '', vc = ''] = MOD[id](), o = on(id);
-    return `<div class="no mod sobe ${o ? '' : 'off'}" tabindex="0" data-card="${id}" style="left:${X[i]}px;width:${LW[i]}px;animation-delay:${.06 + i * .05}s"
-      data-dica="${nome}|Clique: abre · Chave: liga ou desliga|Desligado, o som passa direto por aqui">
+    if (id === 'efeitos') return Est.html(X[i], LW[i], .06 + i * .05);
+    const [ic, nome, vis, r1, r2, voa = '', vc = '', d2 = ''] = MOD[id](), o = on(id), sem = App.cabo.semSom();
+    return `<div class="no mod sobe ${o ? '' : 'off'}${sem ? ' sem-cabo' : ''}" tabindex="0" data-card="${id}" style="left:${X[i]}px;width:${LW[i]}px;animation-delay:${.06 + i * .05}s"
+      data-dica="${sem ? `${nome}|${q(motivoSom())}` : `${nome}|Clique: abre · Chave: liga ou desliga|Desligado, o som passa direto por aqui`}">
       <div class="t">${ico(ic).replace('<svg', '<svg data-voa="header .icone"')}<b data-voa="header h2">${nome}</b><button class="chave ${o ? 'on' : ''}" data-voa="header .c-switch" data-chave="${id}" aria-label="${nome}: ${o ? 'ligado' : 'desligado'}"></button></div>
-      <div class="vis ${vc}"${voa ? ` data-voa="${voa}"` : ''}>${vis}</div><div class="res">${o ? q(r1) : 'Desligado'}</div><div class="res2">${o ? q(r2) : 'O som passa direto'}</div></div>`;
+      <div class="vis ${vc}"${voa ? ` data-voa="${voa}"` : ''}>${vis}</div><div class="res">${o ? q(r1) : 'Desligado'}</div><div class="res2"${o && d2 && !sem ? ` data-dica="${q(d2)}" data-dica-ja` : ''}>${o ? q(r2) : 'O som passa direto'}</div></div>`;
   }
   const fm = ([ic, nome, vis, r1, r2], i) => `<div class="no fm sobe" style="left:${MX[i]}px;width:${MW[i]}px;animation-delay:${.06 + i * .05}s" data-dica="${nome} · em breve|${r1}" data-toast="O microfone ainda não está pronto">
     <div class="t">${ico(ic)}<b>${nome}</b></div><div class="vis">${vis}</div><div class="res">${r1}</div><div class="res2">${r2}</div></div>`;
 
   function desenhar() {
-    const lig = ligado(), som = V.vista === 'som', m = motor(), erro = m.erro && !lig, toca = tocando();
+    const lig = ligado(), som = V.vista === 'som', m = motor(), semS = App.cabo.semSom(), erro = m.erro && !lig && !semS, toca = tocando();
     // Windows names look like "Fone de ouvido (VK S1 S)": card shows the model big, the kind under it
     const sNome = m.saidas?.[0] || (S.dispositivos?.som || []).find((d) => d.p)?.n || 'Seu fone', sp = /^(.*?)\s*\((.+)\)$/.exec(sNome);
     const saida = sp ? sp[2] : sNome, saidaSub = sp ? sp[1] : 'Padrão do Windows';
     const fonteNome = S.s71auto?.fonte, perfil = S.s71?.auto && on('som71') ? S.s71auto?.perfil || S.s71?.perfil : '';
     const ml = micLig(), mm = mic();
-    const sub = !som ? (V.espera || (mm.erro && !ml ? 'O microfone não ligou' : ml ? 'Limpando a sua voz para as chamadas e jogos' : 'Cancelar ruído, alterar voz e equalizar o que os outros ouvem de você.')) : V.espera ? V.espera : erro ? 'O som não ligou: ' + q(m.erro) : !lig ? 'Desligado'
+    const semCabo = !som && !!mm.semCabo && !ml;
+    const sub = !som ? (V.espera || (semCabo ? 'Falta um cabo virtual para o microfone' : mm.erro && !ml ? 'O microfone não ligou' : ml ? 'Limpando a sua voz para as chamadas e jogos' : 'Cancelar ruído, alterar voz e equalizar o que os outros ouvem de você.')) : V.espera ? V.espera : semS ? App.cabo.motivo() + ': o som vai direto para o fone' : erro ? 'O som não ligou: ' + q(m.erro) : !lig ? 'Desligado'
       : V.comparar ? 'Ouvindo sem o FAH. Solte para voltar.' : toca ? `${q(fonteNome || 'Som tocando')} → ${q(saida)}` : `Nada tocando · pronto em ${q(saida)}`;
     const fonte = toca
       ? `<div class="vis"><div class="app">${ico('nota')}</div></div><div class="res">${q(fonteNome || 'Som do PC')}</div><div class="res2">${perfil ? `<span class="chip" data-dica="Perfil automático do Som 7.1|${q(fonteNome || 'O que está tocando')} pede ${q(perfil)}">${ico('nota')}${q(perfil)}</span>` : 'Tocando agora'}</div>`
       : `<div class="vis"><div class="app vazio">${ico('nota')}</div></div><div class="res" style="color:var(--fg2)">Nada tocando</div><div class="res2">Esperando som</div>`;
     const abas = `<div class="abas" role="tablist"><button class="${som ? 'on' : ''}" role="tab" data-vista="som" data-dica="Som|O caminho do som até o seu fone">Som</button>
       <button class="mic ${som ? '' : 'on'}" role="tab" data-vista="mic" data-dica="Microfone|O caminho da sua voz até as chamadas e jogos">Microfone</button></div>`;
-    const comparar = !som ? `<button class="pilula ${mm.ouvirSai ? 'ouve' : ''}" id="ouvirsai" ${ml ? '' : 'disabled'} data-dica="Ouvir o que sai no microfone|Você ouve no fone tudo o que a chamada recebe: sua voz e os programas mandados para o microfone.|Use fone para não dar microfonia">${ico('ouvido')}Ouvir o que sai</button><button class="pilula ${mm.ouvir ? 'ouve' : ''}" id="ouvir" ${ml ? '' : 'disabled'} data-dica="Ouvir minha voz|Você ouve no fone a voz como os outros vão ouvir.|Use fone para não dar microfonia">${ico('ouvido')}Ouvir minha voz</button>` : erro ? `<button class="pilula forte" id="tenta">Tentar de novo</button>`
-      : `<button class="pilula ${V.comparar ? 'segura' : ''}" id="cmp" ${lig ? '' : 'disabled'} data-dica="Comparar|Segure para ouvir sem o FAH. Solte e ele volta.|Atalho: segure C">${ico('ouvido')}Segure para comparar</button>`;
+    // no cable: dimmed but hoverable (a native disabled button shows no tip), click repeats the reason
+    const trava = (ok, sem) => (ok ? '' : sem ? 'aria-disabled="true"' : 'disabled');
+    const comparar = !som ? `<button class="pilula ${mm.ouvirSai ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvirsai" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir o que sai no microfone|' + q(motivoMic()) : 'Ouvir o que sai no microfone|Você ouve no fone tudo o que a chamada recebe: sua voz e os programas mandados para o microfone.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir o que sai</button><button class="pilula ${mm.ouvir ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvir" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir minha voz|' + q(motivoMic()) : 'Ouvir minha voz|Você ouve no fone a voz como os outros vão ouvir.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir minha voz</button>` : erro ? `<button class="pilula forte" id="tenta">Tentar de novo</button>`
+      : `<button class="pilula ${V.comparar ? 'segura' : ''}${semS ? ' apagada' : ''}" id="cmp" ${trava(lig, semS)} data-dica="${semS ? 'Comparar|' + q(motivoSom()) : 'Comparar|Segure para ouvir sem o FAH. Solte e ele volta.|Atalho: segure C'}">${ico('ouvido')}Segure para comparar</button>`;
     const caminho = som
       ? `<div class="no ponta sobe" style="left:${X[0]}px;width:${LW[0]}px" data-dica="De onde vem|O programa que está tocando som agora"><div class="t">${ico('nota')}<b>Tocando</b></div>${fonte}</div>
         ${ordem().map((id, k) => no(k + 1, id)).join('')}
@@ -246,8 +247,9 @@
     const ld = som ? lig : ml, pl = V.espera ? 'espera' : ld ? 'on' : '';
     el.innerHTML = `<div class="b ${som && V.comparar ? 'cmp' : ''} ${(som ? !lig : !ml) ? 'desl' : ''}">${fio()}
       <div class="b-topo sobe">${abas}<span class="sub ${som && erro && !V.espera ? 'erro' : ''}">${sub}</span><div class="esp"></div>${comparar}
-        <button class="pilula ${pl}" id="liga" data-dica="${som ? (lig ? 'Ligado|Clique para desligar: o Windows toca direto no fone' : 'Desligado|Clique para ligar') : ml ? 'Ligado|Clique para desligar: os programas voltam a ouvir o microfone direto' : 'Desligado|Clique para ligar: o FAH vira o microfone padrão do Windows'}"><i class="pt"></i>${ld ? 'Ligado' : 'Desligado'}</button></div>
+        <button class="pilula ${pl}${semCabo || (som && semS) ? ' apagada' : ''}" id="liga"${semCabo || (som && semS) ? ' aria-disabled="true"' : ''} data-dica="${semCabo ? 'Falta um cabo virtual|' + q(mm.erro || '') : som && semS ? App.cabo.motivo() + '|Clique para ver o que fazer' : som ?(lig ? 'Ligado|Clique para desligar: o Windows toca direto no fone' : 'Desligado|Clique para ligar') : ml ? 'Ligado|Clique para desligar: os programas voltam a ouvir o microfone direto' : 'Desligado|Clique para ligar: o FAH vira o microfone padrão do Windows'}"><i class="pt"></i>${ld ? 'Ligado' : 'Desligado'}</button></div>
       ${caminho}</div>`;
+    el.querySelectorAll('.sem-cabo button').forEach((b) => (b.tabIndex = -1));   // Tab stops on the card, not on what is off inside it
     V.toca = toca;
   }
   // redraw without replaying entrances, keeping focus
@@ -267,7 +269,7 @@
   // tooltip + toast (own balloon after 600 ms still, 150 ms with data-dica-ja, always inside the window; Mixer uses it too)
   const dica = document.createElement('div'); dica.className = 'i-dica'; document.body.append(dica); let tD = 0, alvo = null;
   const fechaDica = () => { clearTimeout(tD); dica.classList.remove('on'); alvo = null; };
-  addEventListener('mouseover', (e) => { const a = e.target.closest?.('.t-inicio [data-dica],.t-mesa [data-dica]'); if (a === alvo) return; fechaDica(); alvo = a;
+  addEventListener('mouseover', (e) => { const a = e.target.closest?.('.t-inicio [data-dica],.t-mesa [data-dica],.cb [data-dica]'); if (a === alvo) return; fechaDica(); alvo = a;
     if (!a) return; tD = setTimeout(() => { const [t, ...l] = a.dataset.dica.split('|'); dica.innerHTML = `<b>${t}</b>${l.map((x) => `<span>${x}</span>`).join('')}`;
       const r = a.getBoundingClientRect(); dica.style.left = '0px'; dica.style.top = '0px'; dica.classList.add('on');
       const w = dica.offsetWidth, h = dica.offsetHeight; const x = r.left + r.width / 2 - w / 2; let y = r.bottom + 8; if (y + h > innerHeight - 8) y = r.top - h - 8;
@@ -293,7 +295,7 @@
     V.nm = [Math.max(nv(d.mic), (V.nm?.[0] || 0) * .7), Math.max(nv(d.micSai), (V.nm?.[1] || 0) * .7)]; });
   let ultAviso71 = '';
   addEventListener('fah:cabo71', (e) => { const c = e.detail || {}, t = c.erro || c.msg || ''; if (t === ultAviso71) return; ultAviso71 = t; if (t && App.toast) App.toast(t, 5000); });
-  ['motor', 's71auto', 'cabo71', 's71liga', 'mic'].forEach((t) => addEventListener('fah:' + t, () => { if (t === 'motor' || t === 'mic') V.espera = ''; if (!ligado()) V.comparar = false; if (S.tela === 'inicio') redesenhar(); }));
+  ['motor', 's71auto', 'cabo71', 's71liga', 'mic', 'cabo'].forEach((t) => addEventListener('fah:' + t, () => { if (t === 'motor' || t === 'mic') V.espera = ''; if (!ligado()) V.comparar = false; if (S.tela === 'inicio') redesenhar(); }));
   const vivo = () => { requestAnimationFrame(vivo); if (S.tela !== 'inicio' || !el) return;
     if (V.vista === 'mic') { const lig = micLig(); el.querySelectorAll('[data-mm]').forEach((m) => (m.style.height = (lig ? Math.sqrt(V.nm?.[+m.dataset.mm] || 0) * 100 : 0).toFixed(1) + '%')); return; }
     if (tocando() !== V.toca) redesenhar();
@@ -323,19 +325,28 @@
       el.addEventListener('click', (ev) => {
         const t = ev.target.closest('[data-toast]'); if (t) { toast(t.dataset.toast); return; }
         const v = ev.target.closest('[data-vista]'); if (v) { trocar(v.dataset.vista); return; }
+        if (ev.target.closest('#cmp.apagada')) { toast(motivoSom(), 5000); return; }
+        if (ev.target.closest('#ouvirsai.apagada,#ouvir.apagada')) { toast(motivoMic(), 5000); return; }
         if (ev.target.closest('#ouvirsai')) { App.motor.enviar({ tipo: 'micouvirsai', on: !mic().ouvirSai }); return; }
         if (ev.target.closest('#ouvir')) { App.motor.enviar({ tipo: 'micouvir', on: !mic().ouvir }); return; }
+        // Som without cable: opens the cable screen. Mic without 2nd cable: greyed, click only re-checks quietly (cable may have just been installed) and repeats the reason
+        if (ev.target.closest('#liga.apagada') && V.vista === 'som') { fechaDica(); App.cabo.abrir(); return; }
+        if (ev.target.closest('#liga.apagada')) { toast(mic().erro || 'Falta um cabo virtual para o microfone', 5000); App.motor.enviar({ tipo: 'micligar' }); return; }
         if (ev.target.closest('#liga') && V.vista === 'mic') { const l = micLig(); V.espera = l ? 'Desligando…' : 'Ligando…'; App.motor.enviar({ tipo: l ? 'micdesligar' : 'micligar' });
           if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
         if (ev.target.closest('#liga')) { const l = ligado(); V.espera = l ? 'Desligando…' : 'Ligando…'; App.motor.enviar({ tipo: l ? 'desligar' : 'ligar' });
           if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
         if (ev.target.closest('#tenta')) { V.espera = 'Ligando…'; App.motor.enviar({ tipo: 'ligar' }); if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
+        const sc = ev.target.closest('.sem-cabo'); if (sc) { ev.stopPropagation(); toast(sc.dataset.lado === 'mic' ? motivoMic() : motivoSom(), 5000); return; }
+        if (ev.target.closest('[data-card=efeitos]')) { ev.stopPropagation(); Est.clique(ev); return; }   // Estéreo+: no screen, handles itself
         const ch = ev.target.closest('[data-chave]'); if (ch) { ev.stopPropagation(); S.ligado[ch.dataset.chave] = !on(ch.dataset.chave); redesenhar(); return; }
         const c = ev.target.closest('[data-card]'); if (c) abrir(c);
       });
       el.addEventListener('keydown', (ev) => {
         const c = ev.target.closest('[data-card]');
         if (!c) { const v = ev.target.closest('[data-vista]'); if (v && (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft')) trocar(ev.key === 'ArrowRight' ? 'mic' : 'som'); return; }
+        if (c.classList.contains('sem-cabo') && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toast(c.dataset.lado === 'mic' ? motivoMic() : motivoSom(), 5000); return; }
+        if (c.dataset.card === 'efeitos' && !c.classList.contains('sem-cabo') && Est.tecla(ev)) return;
         if (ev.key === 'Enter') { abrir(c); return; }
         if (ev.key === ' ') { ev.preventDefault(); c.querySelector('.chave').click(); return; }
         if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
@@ -343,6 +354,6 @@
         const l = [...el.querySelectorAll('[data-card]')], i = l.indexOf(c); l[Math.max(0, Math.min(l.length - 1, i + d))].focus(); });
       el.tabIndex = -1;
     },
-    aoSair() { soltarComparar(); fechaDica(); } });
+    aoSair() { soltarComparar(); fechaDica(); Est.fechar(); } });
   App.dock({ id: 'inicio', icone: 'casa', dica: 'Início', tela: 'inicio', ordem: 1 });
 })();

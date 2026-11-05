@@ -34,7 +34,7 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
   .pq .alca.nasce{transform-box:fill-box;transform-origin:center;animation:alNasce .35s var(--curva) both}@keyframes alNasce{from{opacity:0;transform:scale(0)}60%{transform:scale(1.25)}}
   .pq.equ-off .curva .resp,.pq.equ-off .faders{opacity:.3}.pq.tone-off .tone .kn{opacity:.3}.pq.limit-off .kn[data-k=teto]{opacity:.3}
   .pq .baixo{display:flex;gap:14px;align-items:stretch;min-height:0}
-  .pq .faders.entra-modo{animation:eqModo .3s var(--curva) both}@keyframes eqModo{from{opacity:0;transform:translateY(10px)}}
+  .pq .faders.entra-modo,.pq .curva.entra-modo{animation:eqModo .3s var(--curva) both}@keyframes eqModo{from{opacity:0;transform:translateY(10px)}}
   .pq .faders{flex:1;min-width:0;display:flex;gap:4px;background:var(--bg2);border-radius:var(--r-card);padding:14px 10px;transition:opacity .3s}
   .pq .faders .sep{width:1px;background:var(--linha);margin:20px 6px}
   .pq .fd{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;font-variant-numeric:tabular-nums;cursor:ns-resize;min-width:38px}
@@ -201,7 +201,7 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
   // "linked to this headphone" chip: only when the engine is playing to a real output
   const botaoVinc = () => { const n = cfg.porSaida && App.eqSaida.saida(); if (!n) return ''; const c = esc(curto(n)), on = E.alvo === n;
     return `<button class="bt vinc ${on ? 'seg' : ''}" data-vinc="1" title="${on ? `Este som (EQ, AutoEQ e Tone) é só do ${c}. Clique para voltar ao som geral.` : `Guarda este som (EQ, AutoEQ e Tone) só para o ${c}. Os outros aparelhos ficam com o som geral.`}">${UI.ico('fone')}${on ? 'Som do ' : 'Ligar ao '}${c}</button>`; };
-  App.detalhe({ id: cfg.id, montar(el) { elEq = el;
+  App.detalhe({ id: cfg.id, montar(el) { elEq = el; let vista = 'eq';   // 'esp' = Espaço view (espaco-eq.js), Som only
     // parametric band area lives in eq-bandas.js (App.eqParam): html + live paint get these helpers
     const HH = () => ({ E, CORES, cor, TIPOS, MAXB, fader, knob, fmt, coef, Hc, tp: (t) => TIPOS.find((x) => x[0] === t)[1] });
     // full rebuild only for structure changes (mode, new band); entry animation only on first mount
@@ -212,11 +212,12 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
       el.innerHTML = `<div class="pq ${cfg.autoeq ? 'com-aq' : ''} ${E.equ ? '' : 'equ-off'} ${E.tone ? '' : 'tone-off'} ${E.limit ? '' : 'limit-off'}">
         <div class="painel ${anima ? 'entra' : ''}"><div class="topo">${['equ', 'tone', 'limit'].map((t) => `<button class="tg ${E[t] ? 'on' : ''}" data-tg="${t}">${t.toUpperCase()}</button>`).join('')}
           <button class="preset" data-pop="1">${esc(E.preset || 'Personalizado')} <small>▾</small><div class="pop">${popHtml()}</div></button>${botaoVinc()}
-          <div class="dir">${UI.segmento([['grafico', 'Gráfico'], ['param', 'Paramétrico']], E.modo, { campo: 'eqmodo' })}<button class="bt" data-ab="1" title="Segure para ouvir sem o equalizador">Segure: A/B</button><button class="bt" data-reset="1">Zerar</button></div></div>
-          <div class="curva"></div></div>
+          <div class="dir">${UI.segmento([['grafico', 'Gráfico'], ['param', 'Paramétrico'], ...(cfg.espaco ? [['esp', 'Espaço']] : [])], vista === 'esp' ? 'esp' : E.modo, { campo: 'eqmodo' })}<button class="bt" data-ab="1" title="Segure para ouvir sem o equalizador">Segure: A/B</button><button class="bt" data-reset="1">Zerar</button></div></div>
+          <div class="curva" ${vista === 'esp' ? 'hidden' : ''}></div>${cfg.espaco ? `<div class="esp-eq" ${vista === 'esp' ? '' : 'hidden'}>${EspEq.html()}</div>` : ''}</div>
         <div class="baixo ${anima ? 'entra' : ''}" style="animation-delay:.06s">${baixo}
           <div class="tone"><h5>TONE</h5>${knob('bass', 'Graves')}${knob('treble', 'Agudos')}<h5 style="margin-top:6px">LIMIT</h5><div style="grid-column:1/-1;display:flex;justify-content:center">${knob('teto', 'Teto')}</div></div></div>${cfg.extra ? cfg.extra(anima) : ''}</div>`;
       atualiza(); medida.observe(el.querySelector('.curva'));
+      const ee = el.querySelector('.esp-eq'); if (ee) { EspEq.liga(ee); EspEq.pinta(ee); }
     };
     const medida = new ResizeObserver(() => requestAnimationFrame(() => el.isConnected && atualiza()));
     const atualiza = () => { const cv = el.querySelector('.curva'), pb = el.querySelector('.preset'); if (pb) pb.firstChild.textContent = (E.preset || 'Personalizado') + ' '; W = cv.clientWidth || W; H = cv.clientHeight || H; cv.innerHTML = svgCurva();
@@ -251,7 +252,7 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
         : App.eqParam.html(HH(), fader('pre', 'Pré-amp', 'pre')));
       const novo = velho.nextElementSibling; velho.remove(); novo.classList.add('entra-modo');
       novo.addEventListener('animationend', () => novo.classList.remove('entra-modo'), { once: true });
-      el.querySelectorAll('.topo .c-segmento button').forEach((b) => b.classList.toggle('on', b.dataset.v === E.modo));
+      el.querySelectorAll('.topo .c-segmento button').forEach((b) => b.classList.toggle('on', b.dataset.v === (vista === 'esp' ? 'esp' : E.modo)));
       rotulo(); atualiza(); };
     // drag a band tab to another place (eq-bandas.js): reorder = same sound, colors stay with their band
     App.eqParam.arrastar(el, HH, (de, para) => { fixaCores(); const [b] = E.bandas.splice(de, 1); E.bandas.splice(para, 0, b); E.sel = para; mexeu(); atualiza(); });
@@ -351,9 +352,12 @@ App.modulo({ id: 'eq', lado: 'som', ordem: 1, nome: 'Equalizador', icone: 'eq', 
     el.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-ab]'); if (!b) return; const antes = E.equ; E.equ = false; b.classList.add('seg'); morfar(150);
       addEventListener('pointerup', () => { E.equ = antes; b.classList.remove('seg'); morfar(150); }, { once: true }); });
     el.addEventListener('c:mudou', (e) => { const { tipo, valor, dados } = e.detail;
-      if (tipo === 'segmento' && dados.campo === 'eqmodo') { E.modo = valor; trocarBaixo(); }
+      if (tipo === 'segmento' && dados.campo === 'eqmodo') { const cv = el.querySelector('.curva'), ee = el.querySelector('.esp-eq');
+        if (valor === 'esp') { vista = 'esp'; cv.hidden = true; ee.hidden = false; ee.classList.add('entra-esp'); ee.addEventListener('animationend', () => ee.classList.remove('entra-esp'), { once: true }); EspEq.pinta(ee); return; }
+        const volta = vista === 'esp'; vista = 'eq'; if (ee) ee.hidden = true; cv.hidden = false;
+        if (valor !== E.modo) { E.modo = valor; trocarBaixo(); } else if (volta) { cv.classList.add('entra-modo'); cv.addEventListener('animationend', () => cv.classList.remove('entra-modo'), { once: true }); atualiza(); } }
       if (tipo === 'switch' && dados.banda !== undefined) { E.bandas[dados.banda].on = valor; mexeu(); el.querySelectorAll(`[data-card="${dados.banda}"]`).forEach((c) => c.classList.toggle('off', !valor)); atualiza(); } });
   } });
   };
-  App.criaEq({ id: 'eq', chave: 'eq2', presets: PRESETS_SOM, padrao: 'Jogo', autoeq: 'AutoEQ do seu fone…', porSaida: true });
+  App.criaEq({ id: 'eq', chave: 'eq2', presets: PRESETS_SOM, padrao: 'Jogo', autoeq: 'AutoEQ do seu fone…', porSaida: true, espaco: true });
 })();

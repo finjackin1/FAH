@@ -18,6 +18,8 @@ static class Programa
             return 0;
         }
         if (args.Length >= 1 && args[0] == "--teste-mic") return TesteMic();   // tests: mic modules as loaded by the app (no device) -> log
+        if (args.Length >= 1 && args[0] == "--arrumar") { Base.LimparLayoutAntigo(); return 0; }   // tests: old loose layout cleanup only -> log
+        if (args.Length >= 1 && args[0] == "--teste-tela") return TesteTela();                     // tests: WebView2 + ui\ off screen, no Motor -> log
         // --esperar PID (restart after a backup import): wait for the old process to leave before taking the mutex
         int ie = Array.IndexOf(args, "--esperar");
         if (ie >= 0 && ie + 1 < args.Length)
@@ -30,6 +32,7 @@ static class Programa
         if (!primeira) return 0;
         try
         {
+            Base.LimparLayoutAntigo();                     // 1.2.0 single file: drop the loose dlls an update left behind
             Configuracoes.ImportarPendente();               // a backup chosen before the restart goes in before anything reads the state
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;   // no long blocking GC over the audio threads
             ApplicationConfiguration.Initialize();
@@ -44,9 +47,34 @@ static class Programa
         catch (Exception e)
         {
             Base.Log("não abriu: " + e);
-            try { MessageBox.Show("O FAH não conseguiu abrir. O motivo ficou gravado no arquivo fah.log, na pasta relatorios.", "FAH", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            try { MessageBox.Show("O FAH não conseguiu abrir. O motivo ficou gravado no arquivo fah.log, na pasta usuario\\relatorios.", "FAH", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
             return 1;
         }
+    }
+
+    /// <summary>Single-file check without touching sound: off-screen form, WebView2 from usuario\webview, opens ui\index.html, logs the title. 0 = page loaded.</summary>
+    static int TesteTela()
+    {
+        ApplicationConfiguration.Initialize();
+        int r = 1;
+        var f = new Form { StartPosition = FormStartPosition.Manual, Location = new Point(-32000, -32000), Size = new Size(800, 600), ShowInTaskbar = false };
+        var w = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+        f.Controls.Add(w);
+        var limite = new System.Windows.Forms.Timer { Interval = 20000 }; limite.Tick += (_, _) => { Base.Log("teste-tela: tempo esgotado"); f.Close(); }; limite.Start();
+        f.Shown += async (_, _) =>
+        {
+            try
+            {
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, Base.Pasta("webview"));
+                await w.EnsureCoreWebView2Async(env);
+                w.CoreWebView2.SetVirtualHostNameToFolderMapping("fah.local", Base.Ui, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+                w.CoreWebView2.NavigationCompleted += (_, e) => { Base.Log($"teste-tela: ok={e.IsSuccess} titulo={w.CoreWebView2.DocumentTitle} ico={File.Exists(Path.Combine(Base.Ui, "fah.ico"))}"); r = e.IsSuccess ? 0 : 1; f.Close(); };
+                w.CoreWebView2.Navigate("https://fah.local/index.html");
+            }
+            catch (Exception e) { Base.Log("teste-tela: " + e); f.Close(); }
+        };
+        Application.Run(f);
+        return r;
     }
 
     /// <summary>Loads the modules like the app (own load contexts, onnxruntime from modulos\), runs the mic chain on noise for 4 s of

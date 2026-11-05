@@ -8,6 +8,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\FAH.Contrato\FAH.Contrato.csproj" Private="false" />
+    <!-- Estéreo+ Auto: same detector as Som 7.1, linked read-only (Espacial is locked, never edit it there) -->
+    <Compile Include="..\Espacial\Conteudo.cs" Link="Conteudo.cs" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
   </ItemGroup>
   <!-- module .dll goes to the host's modulos\ folder -->
   <Target Name="CopiaParaHost" AfterTargets="Build">

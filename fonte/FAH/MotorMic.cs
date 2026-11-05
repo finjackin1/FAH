@@ -46,7 +46,8 @@ sealed partial class Motor
             if (!religar && guardaMic.Devolver()) Log("microfone padrão do Windows devolvido (a última sessão caiu)");
             var som = Cabo?.Cabo ?? ConferirCabo().Cabo;
             var ach = Cabos.DetectarMic(som);
-            if (ach.Cabo is not { } cb) return FalhaMic(SemSegundoCabo);
+            if (ach.Cabo is not { } cb) { semCaboMic = true; return FalhaMic(SemSegundoCabo(som)); }
+            semCaboMic = false;
             var reais = Aparelhos.Listar(false).Where(a => !a.Virtual).ToList();
             var ultimo = estado.TryGetValue("mic", out var um) && um.ValueKind == JsonValueKind.String ? um.GetString() : null;
             var mic = reais.FirstOrDefault(a => a.Padrao) ?? reais.FirstOrDefault(a => a.Nome == ultimo) ?? reais.FirstOrDefault();
@@ -95,7 +96,21 @@ sealed partial class Motor
 
     bool FalhaMic(string msg) { ErroMic = msg; Log(msg); StatusMic(); return false; }
 
-    const string SemSegundoCabo = "Falta um segundo cabo virtual para o microfone. No Virtual Audio Cable, abra o painel e aumente Cables para 2. Com VB-CABLE, instale também o CABLE-A.";
+    /// <summary>No 2nd cable: the mic switch is greyed (semCabo) and this says which cable solves it, by the Som cable's brand.</summary>
+    bool semCaboMic;
+    /// <summary>Mic switch greyed for lack of a 2nd cable (re-checked when the Som cable is checked again).</summary>
+    public bool SemCaboMic => semCaboMic && !MicLigado;
+
+    static string SemSegundoCabo(Cabo? som) => som switch
+    {
+        { Vac: true } c when Surround71.Lite(c.Tocar.Nome) => "O Virtual Audio Cable Lite tem um cabo só, e ele já leva o som do PC. Para o microfone, instale o VB-CABLE A (VB-Audio) ou a versão completa do Virtual Audio Cable.",
+        { Vac: true } when !Surround71.TemApi() => "Falta um segundo cabo para o microfone. Na versão completa do Virtual Audio Cable, mude Cables para 2 no painel. A versão Lite tem um cabo só: instale o VB-CABLE A (VB-Audio).",
+        { Vac: true } => "Falta a Line 2 para o microfone. Abra o painel do Virtual Audio Cable, mude Cables para 2 e clique em Set.",
+        { Marca: "VB-CABLE" } => "Falta o CABLE-A para o microfone. Instale o VB-CABLE A (VB-Audio) e abra o FAH de novo.",
+        { Marca: "Voicemeeter" } => "O Voicemeeter não tem um cabo livre que o FAH consiga usar para o microfone. Instale o VB-CABLE A (VB-Audio) ou o Virtual Audio Cable.",
+        { } => "Falta um segundo cabo virtual para o microfone. Instale o VB-CABLE A (VB-Audio) ou aumente Cables para 2 no Virtual Audio Cable.",
+        null => "O microfone precisa de um cabo virtual só para ele, além do cabo do som do PC. Sem cabo nenhum, instale um para o som e outro para o microfone.",
+    };
 
     /// <summary>Real mic unplugged while running (capture thread callback: only queue). Notice + the normal retry, no auto-reconnect.</summary>
     void PerdeuMic(Fluxo f, Exception? ex)
@@ -130,7 +145,8 @@ sealed partial class Motor
         {
             if (fluxoMic != null || encerrando) return;
             var cb = Cabos.DetectarMic(Cabo?.Cabo).Cabo;
-            if (cb == null) { FalhaMic(SemSegundoCabo); return; }
+            if (cb == null) { semCaboMic = true; FalhaMic(SemSegundoCabo(Cabo?.Cabo)); return; }
+            semCaboMic = false;
             try
             {
                 var d = new Destino(cb.Tocar.Nome); d.AoPerder = x => PerdeuCaboMic(d, x); d.Abrir(); destMic = d;
@@ -151,7 +167,7 @@ sealed partial class Motor
 
     public void StatusMic() => Enviar("mic", new
     {
-        ligado = MicLigado, erro = ErroMic, entrada = fluxoMic?.NomeReal, saida = caboMic?.Captar.Nome, ouvir = leitorOuvir != null, ouvirSai = fluxoSai != null, injeta = Injetados(),
+        ligado = MicLigado, erro = ErroMic, semCabo = SemCaboMic, entrada = fluxoMic?.NomeReal, saida = caboMic?.Captar.Nome, ouvir = leitorOuvir != null, ouvirSai = fluxoSai != null, injeta = Injetados(),
         uso = Math.Round(fluxoMic?.UsoPct ?? 0, 1),
     });
 

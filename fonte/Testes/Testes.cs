@@ -1,10 +1,11 @@
 // Offline self-test: no device opened, Windows untouched (default switch is simulated in a temp file).
 // Run: FAH.Testes.exe [relatorio.txt]. Exit code = failures.
+extern alias efx;
 using System.Text;
 using System.Text.Json;
 using FAH.Audio;
 using FAH.Equalizador;
-using Fx = FAH.Efeitos;
+using Fx = efx::FAH.Efeitos;
 using Esp = FAH.Espacial;
 
 if (args.Length > 1 && args[0] == "--tocar")     // child for the program-volume test: plays SILENCE on the default device for N ms
@@ -198,7 +199,7 @@ if (args.Length > 1 && args[0] == "--ruido-dist")  // installed modules like the
     foreach (var m in mods) m.Iniciar(host);
     var cad = new Cadeia(); cad.Definir(mods.SelectMany(m => m.Efeitos).Where(e => e.Lado == FAH.Contrato.Lado.Mic));
     rel.AppendLine("ordem mic: " + string.Join(" > ", cad.Efeitos.Select(e => e.Id)));
-    var est = JsonDocument.Parse(File.ReadAllText(Path.Combine(pasta, "config", "estado.json"))).RootElement;
+    var est = JsonDocument.Parse(File.ReadAllText(new[] { Path.Combine(pasta, "usuario", "config", "estado.json"), Path.Combine(pasta, "config", "estado.json") }.First(File.Exists))).RootElement;
     foreach (var p in est.EnumerateObject()) foreach (var m in mods) if (m.Receber(p.Name, p.Value)) break;
     var raiz = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     using var r0 = new NAudio.Wave.WaveFileReader(args.Length > 2 ? args[2] : Path.Combine(raiz, "amostras", "1_original_com_muito_ruido.wav"));
@@ -333,6 +334,9 @@ const int T = 48000;
     var s8 = new float[8] { 0.1f, 0.2f, 0.4f, 0f, 0.2f, 0.2f, 0.1f, 0.1f }; var lr = new float[2];
     Fluxo.Descer(s8, lr, 1, 8);
     Ok("7.1 -> estéreo", Math.Abs(lr[0] - (0.1 + 0.707 * 0.4 + 0.1 + 0.05)) < 1e-4 && Math.Abs(lr[1] - (0.2 + 0.707 * 0.4 + 0.1 + 0.05)) < 1e-4, $"{lr[0]:F3} {lr[1]:F3}");
+    // 04/11: VAC Lite is stereo only: never asked to go 7.1 (name check, no driver call)
+    Ok("7.1: VAC Lite fica de fora", !Surround71.Suporta("Line 1 (Virtual Audio Cable Lite)") && !Surround71.Lite("Satellite (Virtual Audio Cable)") && Surround71.Lite("Line 1 (VAC lite)"),
+        "Lite recusado sem tentar, 'Satellite' não confunde");
 }
 
 // 7. Windows default guard (simulated): switch, then give back
@@ -450,32 +454,173 @@ const int T = 48000;
     Ok("reverb", ruins.Count == 0 && intacto, ruins.Count == 0 ? $"8 cenas com cauda que cai até 8 s, pico no ruído {piorPico:F2}; desligado volta intacto {intacto}" : "com problema: " + string.Join("; ", ruins));
 }
 
-// 12. UI state -> effects (module switch off turns all three off)
+// 12. UI state -> effects. Estéreo+ (04/11): profile -> engine core; card switch = Estéreo+ only; crossfeed/reverb follow the EQ switch; crossfeed paused while Estéreo+ on
 {
-    var m = new Fx.Modulo();
-    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"bal":-40,"larg":125,"mono":false},"cf":{"on":true,"nivel":"forte"},"rv":{"on":true,"preset":"Palco","p":[24,70,50,12,100,42,41]}}""").RootElement);
-    bool a = m.Estereo.Balanco == -.4 && m.Estereo.Largura == 1.25 && m.Crossfeed.Ligado && m.Crossfeed.Nivel == "forte" && m.Reverb.Ligado;
-    bool dono = m.Receber("ligado", JsonDocument.Parse("""{"efeitos":false,"som71":true}""").RootElement);
-    bool b = m.Estereo.Balanco == 0 && m.Estereo.Largura == 1 && !m.Crossfeed.Ligado && !m.Reverb.Ligado;
-    // 30/10: width paused over Som 7.1 (it spread the virtual speakers), balance stays; back when 7.1 is off
-    m.Receber("ligado", JsonDocument.Parse("""{"efeitos":true,"som71":true}""").RootElement);
-    bool p71 = m.Estereo.Largura == 1 && m.Estereo.Balanco == -.4;
-    m.Receber("ligado", JsonDocument.Parse("""{"efeitos":true,"som71":false}""").RootElement);
-    p71 &= m.Estereo.Largura == 1.25;
-    Ok("efeitos: largura pausada com o Som 7.1", p71, $"pausa com 7.1 e volta sem ele: {p71}");
-    Ok("estado dos efeitos", a && b && !dono, $"aplica {a}, chave do módulo desliga os 3 {b}, 'ligado' fica livre para os outros {!dono}");
+    var P = Fx.EstereoMais.Perfis;
+    var m = new Fx.Modulo(); var es = m.Estereo;
+    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"modo":"filme"},"cf":{"on":true,"nivel":"forte"},"rv":{"on":true,"preset":"Palco","p":[24,70,50,12,100,42,41]}}""").RootElement);
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":true,"efeitos":true,"som71":false}""").RootElement);
+    bool a = es.Ligado && es.Modo == "filme" && es.Desejado?.Perfil == P["filme"] && es.Erro == null && m.Crossfeed.Ligado && !m.Crossfeed.Permitido && m.Crossfeed.Nivel == "forte" && m.Reverb.Ligado;
+    var perf = new List<string>();
+    foreach (var mo in new[] { "jogo", "musica", "filme", "xyz" }) { m.Receber("efeitos", JsonDocument.Parse($$$"""{"est":{"on":true,"modo":"{{{mo}}}"}}""").RootElement); perf.Add(es.Desejado?.Perfil == P[es.Modo] ? es.Modo : "?"); }
+    bool modos = string.Join('/', perf) == "jogo/musica/filme/musica" && m.ModoEfetivo == "musica";   // unknown -> auto (starts on Música)
+    bool dono = m.Receber("ligado", JsonDocument.Parse("""{"eq":true,"efeitos":false,"som71":false}""").RootElement);
+    bool b = !es.Ligado && m.Crossfeed.Ligado && m.Crossfeed.Permitido && m.Reverb.Ligado;
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":false,"efeitos":true,"som71":false}""").RootElement);
+    bool eq = es.Ligado && !m.Crossfeed.Ligado && !m.Reverb.Ligado;
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":true,"efeitos":true,"som71":true}""").RootElement);
+    bool p71 = !es.Ligado && !m.Crossfeed.Permitido;
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":true,"efeitos":true,"som71":false}""").RootElement);
+    p71 &= es.Ligado;
+    Ok("estéreo+ pausado com o Som 7.1", p71, $"pausa com 7.1 e volta sem ele: {p71}");
+    Ok("estado dos efeitos", a && modos && b && eq && !dono, $"aplica {a}, perfis {string.Join('/', perf)} {modos}, chave do cartão só no Estéreo+ {b}, crossfeed/reverb seguem o EQ {eq}, 'ligado' livre {!dono}");
+    // Auto: follows what plays after the 4 s hysteresis
+    var au = new Fx.Modulo(); au.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"modo":"auto"}}""").RootElement);
+    bool t0 = au.Observar([("Jogo", "cs2.exe")], 0), t1 = au.Observar([("Jogo", "cs2.exe")], 5);
+    bool auto = !t0 && t1 && au.ModoEfetivo == "jogo" && au.Estereo.Modo == "jogo" && au.Estereo.Desejado?.Perfil == P["jogo"];
+    Ok("estéreo+ automático", auto, $"troca para Jogo depois de 4 s: {auto} (perfil {au.Estereo.Modo})");
+}
+
+// 12c. Estéreo+ v4 measurements (05/11: out of the head like Dolby, centre untouched, nothing lost). Per profile on the core: centre bit-exact, no band of any
+// input loses energy (mono, uncorrelated, hard-left, anti-phase), side wider above the cut, bass side as recorded, no room, CPU. Then the outer engine.
+{
+    double[] Bp(double f0, double q) { double w0 = 2 * Math.PI * f0 / T, al = Math.Sin(w0) / (2 * q), c = Math.Cos(w0), a0 = 1 + al; return [al / a0, 0, -al / a0, -2 * c / a0, (1 - al) / a0]; }
+    double[] Filt(double[] k, double[] x)
+    {
+        var y = (double[])x.Clone();
+        for (int v = 0; v < 2; v++) { double z1 = 0, z2 = 0, y1 = 0, y2 = 0; for (int i = 0; i < y.Length; i++) { double xi = y[i], yi = k[0] * xi + k[1] * z1 + k[2] * z2 - k[3] * y1 - k[4] * y2; z2 = z1; z1 = xi; y2 = y1; y1 = yi; y[i] = yi; } }
+        return y;
+    }
+    double Pot(double[] x, int ini = 0, int fim = -1) { double s = 0; for (int i = ini; i < (fim < 0 ? x.Length : fim); i++) s += x[i] * x[i]; return s; }
+    double[] Rosa(int n, int semente)
+    {
+        var r = new Random(semente); double b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0; var y = new double[n];
+        for (int i = 0; i < n; i++) { double w = r.NextDouble() * 2 - 1; b0 = .99886 * b0 + w * .0555179; b1 = .99332 * b1 + w * .0750759; b2 = .969 * b2 + w * .153852; b3 = .8665 * b3 + w * .3104856; b4 = .55 * b4 + w * .5329522; b5 = -.7616 * b5 - w * .016898; y[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * .5362) * .05; b6 = w * .115926; }
+        return y;
+    }
+    (double[] l, double[] r) Rodar(Fx.Nucleo nu, double[] l, double[] r)
+    {
+        int n = l.Length, S = Fx.Nucleo.Sub; var e = new float[S * 2]; var o = new float[S * 2]; var yl = new double[n]; var yr = new double[n];
+        nu.Limpar();
+        for (int ini = 0; ini < n; ini += S)
+        {
+            int q = Math.Min(S, n - ini);
+            for (int i = 0; i < q; i++) { e[2 * i] = (float)l[ini + i]; e[2 * i + 1] = (float)r[ini + i]; }
+            nu.Processar(e, o, q);
+            for (int i = 0; i < q; i++) { yl[ini + i] = o[2 * i]; yr[ini + i] = o[2 * i + 1]; }
+        }
+        return (yl, yr);
+    }
+    double[] Faixas = [.. Enumerable.Range(-14, 28).Select(k => 1000 * Math.Pow(2, k / 3.0))];   // 1/3 octave 40 Hz - 12.7 kHz
+    double[] Dev(double[] yl, double[] yr, double[] xl, double[] xr, int sk) => [.. Faixas.Select(f =>
+    {
+        var bp = Bp(f, 4.32);
+        return 10 * Math.Log10((Pot(Filt(bp, yl), sk) + Pot(Filt(bp, yr), sk)) / (Pot(Filt(bp, xl), sk) + Pot(Filt(bp, xr), sk)));
+    })];
+    double[] Lado(double[] l, double[] r) => [.. l.Select((v, i) => (v - r[i]) / 2)];
+
+    int N = T * 3, sk = T / 2; var pL = Rosa(N, 11); var pR = Rosa(N, 12); var zN = new double[N]; var pA = pL.Select(v => -v).ToArray();
+    var falhaPerfil = new List<string>(); var linhas = new List<string>();
+    foreach (var (nome, pf) in Fx.EstereoMais.Perfis)
+    {
+        var nu = new Fx.Nucleo(nome, pf, T); var f = new List<string>();
+        // centre: L = R -> output identical to input
+        var (mL, mR) = Rodar(nu, pL, pL); double cErro = 0; for (int i = 0; i < N; i++) cErro = Math.Max(cErro, Math.Max(Math.Abs(mL[i] - (float)pL[i]), Math.Abs(mR[i] - (float)pL[i])));
+        if (cErro > 1e-6) f.Add("centro mudou");
+        // nothing lost: every band, every input, ears summed (and the side itself for anti-phase), never below -0.5 dB
+        double pior = double.MaxValue; string piorEm = "";
+        foreach (var (rot, xl, xr) in new[] { ("descorrelacionado", pL, pR), ("só esquerda", pL, zN), ("fase invertida", pL, pA) })
+        {
+            var (yl, yr) = Rodar(nu, xl, xr); var d = Dev(yl, yr, xl, xr, sk);
+            for (int k = 0; k < d.Length; k++) if (d[k] < pior) { pior = d[k]; piorEm = $"{rot} {Faixas[k]:F0} Hz"; }
+        }
+        if (pior < -0.5) f.Add("faixa sumiu");
+        // width: side of uncorrelated pink, gain at 2 kHz (target ~ Largura) and at 40 Hz (as recorded)
+        var (uL, uR) = Rodar(nu, pL, pR); var sIn = Lado(pL, pR); var sOut = Lado(uL, uR);
+        double G(double fc) { var bp = Bp(fc, 4.32); return 10 * Math.Log10(Pot(Filt(bp, sOut), sk) / Pot(Filt(bp, sIn), sk)); }
+        double g6k = G(6000), g40 = G(40), alvo = 20 * Math.Log10(pf.Largura), gMax = Faixas.Max(G);
+        if (Math.Abs(g6k - alvo) > 1) f.Add("agudo lateral");               // v4: treble side = small flat widening ("agudo no nível")
+        if (gMax > alvo + 3) f.Add("lado com pico");                       // no presence bump from the head cue
+        if (Math.Abs(g40) > 1) f.Add("grave lateral");
+        // head cue: hard-left at 400 Hz must reach the right ear (out of the head), not only the left
+        var (hL, hR) = Rodar(nu, pL, zN); var b4 = Bp(400, 4.32); double cruza = 10 * Math.Log10(Pot(Filt(b4, hR), sk) / Pot(Filt(b4, hL), sk));
+        if (cruza < -15) f.Add("sem cabeça");
+        // no room: nothing after 30 ms
+        var imp = new double[T]; imp[0] = 1; var zero = new double[T]; double eco = double.MinValue;
+        foreach (var (il, ir) in new[] { (imp, zero), (zero, imp) })
+        {
+            var (hl, hr) = Rodar(nu, il, ir); int W = T / 1000;
+            double Jan(int j) => Pot(hl, j * W, (j + 1) * W) + Pot(hr, j * W, (j + 1) * W);
+            double dir = Enumerable.Range(0, 5).Max(Jan), tarde = Enumerable.Range(30, T / W - 30).Max(Jan) + 1e-30;
+            eco = Math.Max(eco, 10 * Math.Log10(tarde / dir));
+        }
+        if (eco >= -60) f.Add("sala");
+        // CPU: 480-frame blocks (10 ms), 99th percentile
+        nu.Limpar(); var bl = new float[480 * 2]; var ob = new float[480 * 2]; var rq = new Random(3); for (int i = 0; i < bl.Length; i++) bl[i] = (float)(rq.NextDouble() * .2 - .1);
+        var tempos = new List<double>();
+        for (int k = 0; k < 2100; k++) { long t0 = System.Diagnostics.Stopwatch.GetTimestamp(); nu.Processar(bl, ob, 480); if (k >= 100) tempos.Add(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds); }
+        tempos.Sort(); double p99 = tempos[(int)(tempos.Count * .99)];
+        if (p99 >= 1) f.Add("cpu");
+        linhas.Add($"{nome}: centro igual (erro {cErro:E0}), pior faixa {pior:+0.0;-0.0} dB ({piorEm}), lado 6 kHz {g6k:+0.0} dB (alvo {alvo:+0.0}), pico lateral {gMax:+0.0} dB, outra orelha 400 Hz {cruza:F0} dB, lado 40 Hz {g40:+0.0;-0.0} dB, depois de 30 ms {eco:F0} dB, p99 {p99:F3} ms");
+        if (f.Count > 0) falhaPerfil.Add($"{nome} ({string.Join(", ", f)})");
+    }
+    Ok("estéreo+ medições por perfil", falhaPerfil.Count == 0, (falhaPerfil.Count == 0 ? "" : "falhou: " + string.Join("; ", falhaPerfil) + " | ") + string.Join(" | ", linhas));
+
+    // outer engine: loudness held (±1 dB) on music-like stereo
+    int NL = T * 8, B = 480; var c0 = Rosa(NL, 21); var c1 = Rosa(NL, 22); var c2 = Rosa(NL, 23);
+    var vol = new List<string>(); bool volOk = true;
+    foreach (var nome in Fx.EstereoMais.Perfis.Keys)
+    {
+        var em = new Fx.EstereoMais(); em.Preparar(T); em.Modo = nome; em.Ligado = true;
+        var buf = new float[B * 2]; double pi = 0, po = 0;
+        for (int b0 = 0; b0 < NL / B; b0++)
+        {
+            bool med = b0 >= T * 5 / B;
+            for (int i = 0; i < B; i++) { int j = b0 * B + i; buf[2 * i] = (float)(c0[j] + .5 * c1[j]); buf[2 * i + 1] = (float)(c0[j] + .5 * c2[j]); if (med) pi += buf[2 * i] * buf[2 * i] + buf[2 * i + 1] * buf[2 * i + 1]; }
+            em.Processar(buf, B);
+            if (med) for (int i = 0; i < B * 2; i++) po += buf[i] * buf[i];
+        }
+        double db = 10 * Math.Log10(po / pi); volOk &= Math.Abs(db) <= 1 && em.Erro == null; vol.Add($"{nome} {db:+0.0;-0.0} dB");
+    }
+    Ok("estéreo+ volume igual", volOk, string.Join(", ", vol));
+
+
+    // no click: switch on/off and change profile every 20 blocks over a 1 kHz tone
+    {
+        var em = new Fx.EstereoMais(); em.Preparar(T); int nb = 480; var s = new float[B * nb * 2];
+        for (int i = 0; i < B * nb; i++) { s[2 * i] = (float)(.25 * Math.Sin(2 * Math.PI * 1000 * i / T)); s[2 * i + 1] = (float)(.25 * Math.Sin(2 * Math.PI * 1000 * i / T + 1)); }
+        double natural = .25 * 2 * Math.PI * 1000 / T; string[] mos = ["jogo", "musica", "filme"];
+        for (int b0 = 0; b0 < nb; b0++)
+        {
+            if (b0 % 20 == 0) { int k = b0 / 20; if (k % 4 == 1) em.Ligado = !em.Ligado; else em.Modo = mos[k % 3]; if (k == 0) em.Ligado = true; }
+            em.Processar(s.AsSpan(b0 * B * 2, B * 2), B);
+        }
+        double passo = 0; for (int i = B * 10; i < B * nb; i++) passo = Math.Max(passo, Math.Max(Math.Abs(s[2 * i] - s[2 * i - 2]), Math.Abs(s[2 * i + 1] - s[2 * i - 1])));
+        Ok("estéreo+ sem estalo", passo < natural * 3, $"salto máximo ligando/desligando/trocando perfil {passo:F4} (seno {natural:F4})");
+    }
+
+    // off = bit-exact from the start; after on -> off it goes back to untouched
+    {
+        var em = new Fx.EstereoMais(); em.Preparar(T); var rq = new Random(9); var q = new float[B * 2];
+        void Encher() { for (int i = 0; i < q.Length; i++) q[i] = (float)(rq.NextDouble() * .2 - .1); }
+        bool ini = true; for (int k = 0; k < 50; k++) { Encher(); var q0 = (float[])q.Clone(); em.Processar(q, B); ini &= q.SequenceEqual(q0); }
+        em.Ligado = true; for (int k = 0; k < 300; k++) { Encher(); em.Processar(q, B); }
+        em.Ligado = false; int volta = -1;
+        for (int k = 0; k < 3000 && volta < 0; k++) { Encher(); var q0 = (float[])q.Clone(); em.Processar(q, B); if (q.SequenceEqual(q0)) volta = k; }
+        Ok("estéreo+ desligado intacto", ini && volta >= 0, $"desligado desde o início intacto {ini}; depois de ligado volta intacto em {volta * 10} ms");
+    }
 }
 
 // 12b. module switch on real sound: "ligado".efeitos=false = sound intact; back on = applies again
 {
     var m = new Fx.Modulo(); var c = new Cadeia(); c.Definir(m.Efeitos);
-    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"bal":-2,"larg":125,"mono":false},"cf":{"on":true,"nivel":"suave"},"rv":{"on":true,"preset":"Palco","p":[24,70,50,12,100,42,41]}}""").RootElement);
-    m.Receber("ligado", JsonDocument.Parse("""{"efeitos":true,"som71":false}""").RootElement);
+    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"modo":"filme"},"cf":{"on":true,"nivel":"suave"},"rv":{"on":true,"preset":"Palco","p":[24,70,50,12,100,42,41]}}""").RootElement);
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":false,"efeitos":true,"som71":false}""").RootElement);   // EQ off = only Estéreo+ left
     bool Intacto() { var rnd = new Random(6); bool ok = true; for (int k = 0; k < 600; k++) { var x = new float[1024 * 2]; for (int i = 0; i < x.Length; i++) x[i] = (float)(rnd.NextDouble() * .2 - .1); var cp = (float[])x.Clone(); c.Processar(x, 1024); if (k > 500) ok &= x.AsSpan().SequenceEqual(cp); } return ok; }
     bool ligado = !Intacto();
-    m.Receber("ligado", JsonDocument.Parse("""{"efeitos":false,"som71":false}""").RootElement);
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":false,"efeitos":false,"som71":false}""").RootElement);
     bool desl = Intacto();
-    m.Receber("ligado", JsonDocument.Parse("""{"efeitos":true,"som71":false}""").RootElement);
+    m.Receber("ligado", JsonDocument.Parse("""{"eq":false,"efeitos":true,"som71":false}""").RootElement);
     bool volta = !Intacto();
     Ok("chave dos Efeitos no som", ligado && desl && volta, $"ligado mexe {ligado}, desligado intacto {desl}, religado mexe {volta}");
     // 29/10: Som 7.1 is its own dock toggle: the Efeitos switch no longer touches it
@@ -488,7 +633,7 @@ const int T = 48000;
 // 13. CPU: stereo + crossfeed + biggest reverb on 60 s of audio
 {
     var m = new Fx.Modulo();
-    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"bal":10,"larg":120},"cf":{"on":true},"rv":{"on":true,"p":[100,70,80,40,100,50,50]}}""").RootElement);
+    m.Receber("efeitos", JsonDocument.Parse("""{"est":{"on":true,"modo":"filme"},"cf":{"on":true},"rv":{"on":true,"p":[100,70,80,40,100,50,50]}}""").RootElement);
     var c = new Cadeia(); c.Definir(m.Efeitos);
     var y = new float[1024 * 2]; var rnd = new Random(8); for (int i = 0; i < y.Length; i++) y[i] = (float)(rnd.NextDouble() * .2 - .1);
     var sw = System.Diagnostics.Stopwatch.StartNew(); int blocos = T * 60 / 1024;
@@ -955,6 +1100,15 @@ const int T = 48000;
         ("VAC antes do VB", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.Cabo?.Vac == true),
         ("VB desativado", [real, P("CABLE Input", VB, true, D), P("CABLE Output", VB, false, D)], a => a.Estado == "desativado" && a.Marca == "VB-CABLE" && a.Desativados.Length == 2 && a.Desativados[0].StartsWith("CABLE Input")),
         ("meio desativado", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, D)], a => a.Estado == "desativado" && a.Desativados.Single().StartsWith("CABLE Output")),
+        ("VAC só com a Saída da Line 1 (04/11)", [P("Line 1", VAC, true, A), P("Line 2", VAC, true, D), P("Line 1", VAC, false, D), P("Line 2", VAC, false, D), P("Mic 1", VAC, false, NAudio.CoreAudioApi.DeviceState.Unplugged), P("S/PDIF 1", VAC, false, NAudio.CoreAudioApi.DeviceState.Unplugged)], a => a.Estado == "desativado" && a.Desativados.Single() == "Line 1 na seção Entrada"),
+        ("VAC todo desativado pede só a Line 1", [P("Line 2", VAC, true, D), P("Line 1", VAC, true, D), P("Line 1", VAC, false, D), P("Line 2", VAC, false, D)], a => a.Desativados.SequenceEqual(["Line 1 na seção Saída", "Line 1 na seção Entrada"])),
+        ("Saída ligada, Entrada desligada: FAH liga a Entrada (04/11)", [P("Line 1", VAC, true, A), P("Line 2", VAC, true, D), P("Line 1", VAC, false, D), P("Line 2", VAC, false, D)], a => a.Ligar == P("Line 1", VAC, false, D).Id),
+        ("Entrada ligada, Saída desligada: FAH liga a Saída", [P("Line 1", VAC, true, D), P("Line 1", VAC, false, A)], a => a.Ligar == P("Line 1", VAC, true, D).Id),
+        ("VB pela metade: FAH liga o outro lado", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, D)], a => a.Ligar == P("CABLE Output", VB, false, D).Id),
+        ("dois lados desligados: não liga sozinho", [P("Line 1", VAC, true, D), P("Line 1", VAC, false, D)], a => a.Estado == "desativado" && a.Ligar == null),
+        ("Voicemeeter desligado: não liga sozinho", [P("Voicemeeter Input", VM, true, D)], a => a.Estado == "desativado" && a.Ligar == null),
+        ("outro lado sem conector: não há o que ligar", [P("Line 1", VAC, true, A), P("Line 1", VAC, false, NAudio.CoreAudioApi.DeviceState.Unplugged)], a => a.Ligar == null),
+        ("cabo inteiro: nada a ligar", [P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.Estado == "achou" && a.Ligar == null),
         ("desativado + outro ativo", [P("CABLE Input", VB, true, D), P("CABLE Output", VB, false, D), P("Voicemeeter Input", VM, true, A)], a => a.Estado == "achou" && a.Cabo!.Marca == "Voicemeeter"),
         ("sem cabo", [real], a => a.Estado == "falta"),
     ];
@@ -963,6 +1117,20 @@ const int T = 48000;
     Cabos.Teste = _ => false; var sv = Cabos.Detectar(); Cabos.Teste = null;
     var pc = Cabos.Detectar();
     Ok("cabo: serviço parado avisa, PC real responde", sv.Estado == "servico" && pc.Estado != "servico", $"parado -> {sv.Estado}; este PC -> {pc.Estado} {pc.Cabo?.Tocar.Nome} -> {pc.Cabo?.Captar.Nome}");
+    // "Verificar de novo" changes only what depends on the cable: (tinha, novo, som ligado, som em, mic em, falta mic) -> plano
+    (string, Cabos.PlanoCabo, Cabos.PlanoCabo)[] planos =
+    [
+        ("sem cabo continua sem", Cabos.Replanejar(false, null, false, null, null, true), default),
+        ("instalou: liga som e mic", Cabos.Replanejar(false, "a", false, null, null, true), new(false, true, false, true)),
+        ("mesmo cabo, som desligado pelo usuário fica desligado", Cabos.Replanejar(true, "a", false, "a", null, false), default),
+        ("mesmo cabo, tudo ligado: nada muda", Cabos.Replanejar(true, "a", true, "a", "b", false), default),
+        ("cabo melhor: som troca", Cabos.Replanejar(true, "v", true, "a", null, false), new(true, false, false, false)),
+        ("cabo do mic virou o do som: mic procura outro", Cabos.Replanejar(true, "b", true, "a", "b", false), new(true, false, true, true)),
+        ("cabo sumiu: só avisa", Cabos.Replanejar(true, null, true, "a", "b", false), default),
+        ("segundo cabo instalado: só o mic liga", Cabos.Replanejar(true, "a", true, "a", null, true), new(false, false, false, true)),
+    ];
+    var erradosP = planos.Where(p => p.Item2 != p.Item3).Select(p => p.Item1).ToList();
+    Ok("verificar cabo muda só o que depende dele", erradosP.Count == 0, erradosP.Count == 0 ? $"{planos.Length} casos" : "falhou: " + string.Join(", ", erradosP));
 }
 
 // 22. Mic chain (B5): DeepFilterNet suppressor on the noisy voice sample, tone/timbre, tools, limiter; listening files in docs\teste-real\amostras-mic

@@ -60,6 +60,15 @@ public static class Surround71
         finally { Marshal.FreeHGlobal(buf); SetupDiDestroyDeviceInfoList(l); }
     }
 
+    /// <summary>Cable can go 7.1 here: full VAC only (its API answers). VAC Lite (1 cable, stereo, other product GUID) = false.</summary>
+    public static bool Suporta(string tocar) => !Lite(tocar) && TemApi();
+    /// <summary>VAC Lite by name (whole word: "Satellite"/"Elite" are not it).</summary>
+    public static bool Lite(string nome) => System.Text.RegularExpressions.Regex.IsMatch(nome, @"\bLite\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    /// <summary>Full VAC driver API reachable (Lite has another product GUID, so false there too).</summary>
+    public static bool TemApi() => CaminhoApi(out _) != null;
+    /// <summary>Result text of a switch that needed admin and did not get it (only this one is remembered as "failed").</summary>
+    public const string SemAdmin = "Precisa da permissão de administrador (o Windows pergunta uma vez)";
+
     static uint Ctl(int func, int acesso) => (0x22u << 16) | ((uint)acesso << 14) | ((uint)func << 2);
 
     /// <summary>CableInfo (API 7, 328 bytes): faixa at 12 (6 uint: sr_min sr_max bps_min bps_max nc_min nc_max), entradas 76, saidas 80.</summary>
@@ -255,7 +264,7 @@ public static class Surround71
     {
         var p = Preparar(tocar, captar);
         if (p == null) return (false, "Não achei os dois lados do cabo no Windows");
-        if (!Trocar(p, ligar) && ligar && Estado(tocar, captar).Tocar != 8) return (false, "Precisa da permissão de administrador (o Windows pergunta uma vez)");
+        if (!Trocar(p, ligar) && ligar && Estado(tocar, captar).Tocar != 8) return (false, SemAdmin);
         return Conferir(tocar, captar, ligar);
     }
 

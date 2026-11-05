@@ -14,6 +14,7 @@ const S71 = (() => {
   document.head.insertAdjacentHTML('beforeend', `<style>
   .dock .t71 span{grid-area:1/1;font:700 17px/1 var(--fonte);letter-spacing:.3px;pointer-events:none}
   .dock .t71 .b{color:var(--fg3)}
+  .dock .t71.apagada{opacity:.4;cursor:default}
   .dock .t71 .l{color:#ffb340;filter:drop-shadow(0 0 3px rgba(255,159,10,.95)) drop-shadow(0 0 9px rgba(255,159,10,.55));clip-path:inset(-40px calc(100% + 40px) -40px -40px)}
   .dock .t71 .f{color:#fff6e0;filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 10px #ffb340);clip-path:inset(-40px calc(100% + 40px) -40px -40px);opacity:0}
   .dock .t71.lig .l{clip-path:inset(-40px)}
@@ -25,13 +26,21 @@ const S71 = (() => {
   @keyframes f71{0%{clip-path:inset(-40px calc(100% + 40px) -40px -30%);opacity:1}85%{opacity:1}100%{clip-path:inset(-40px -30% -40px calc(100% + 40px));opacity:0}}
   @media (prefers-reduced-motion:reduce){.dock .t71 .l,.dock .t71 .f{animation-duration:.01s!important}}
   </style>`);
-  const dica = () => (on() ? 'Som 7.1 ligado' : 'Som 7.1 desligado');
-  App.dock({ id: 's71', dica: 'Som 7.1', ordem: 5, classe: () => 't71' + (on() ? ' lig' : ''), dicaViva: dica,
+  const c71 = () => App.estado.cabo71 || {};   // engine: {suporte:false, motivo} = this cable can't take 7.1 (Lite etc.)
+  const sem = () => App.cabo.semSom();   // no usable cable at all: dimmed and blocked (a stereo cable keeps 7.1: engine upmixes)
+  const dica = () => (sem() ? App.cabo.motivo() + ': o Som 7.1 precisa dele' : (on() ? 'Som 7.1 ligado' : 'Som 7.1 desligado') + (c71().suporte === false ? ' · seu cabo só passa estéreo' : ''));   // dock tip = CSS ::after, one line
+  let ultMotivo = '';   // full reason as a toast, once per reason, only while 7.1 is on
+  const avisa = () => { const m = !sem() && c71().suporte === false && on() ? String(c71().motivo || '') : ''; if (m && m !== ultMotivo && App.toast) App.toast(m, 6000); ultMotivo = m; };
+  const pintaDock = () => { const b = document.querySelector('[data-dock=s71]'); if (b) { b.dataset.dica = dica(); b.classList.toggle('apagada', sem()); } };
+  addEventListener('fah:cabo71', () => { pintaDock(); avisa(); });
+  addEventListener('fah:cabo', pintaDock);
+  App.dock({ id: 's71', dica: 'Som 7.1', ordem: 5, classe: () => 't71' + (on() ? ' lig' : '') + (sem() ? ' apagada' : ''), dicaViva: dica,
     html: () => '<span class="b">7.1</span><span class="l">7.1</span><span class="f">7.1</span>',
-    acao: () => { const v = !on(); App.estado.ligado.som71 = v;
+    acao: () => { if (sem()) { App.toast?.(App.cabo.motivo() + ': o Som 7.1 precisa dele', 4000); return; }
+      const v = !on(); App.estado.ligado.som71 = v;
       const b = document.querySelector('[data-dock=s71]');
       if (b) { b.classList.remove('acende', 'apaga', 'lig'); void b.offsetWidth; b.classList.add(v ? 'acende' : 'apaga'); if (v) b.classList.add('lig'); b.dataset.dica = dica(); }
-      dispatchEvent(new CustomEvent('fah:s71liga', { detail: v })); } });
+      dispatchEvent(new CustomEvent('fah:s71liga', { detail: v })); avisa(); } });
 
   // Estéreo/Crossfeed/Reverb controls: same pieces and handlers as the approved screen (efeitos.js)
   const E = Efx.E;

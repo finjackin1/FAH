@@ -12,8 +12,9 @@ public sealed record Cabo(string Marca, Aparelho Tocar, Aparelho Captar, bool Lo
     public bool Vac => Marca == "Virtual Audio Cable";
 }
 
-/// <summary>Estado: achou | falta | desativado | servico. Desativados = endpoint names to turn on (estado desativado).</summary>
-public sealed record Achado(string Estado, Cabo? Cabo, string? Marca, string[] Desativados, string Detalhe);
+/// <summary>Estado: achou | falta | desativado | servico. Desativados = endpoint names to turn on (estado desativado).
+/// Ligar = id of the only side missing from a half-on pair (FAH turns it on itself: Motor.LigarOutroLado).</summary>
+public sealed record Achado(string Estado, Cabo? Cabo, string? Marca, string[] Desativados, string Detalhe, string? Ligar = null);
 
 public static class Cabos
 {
@@ -49,12 +50,23 @@ public static class Cabos
         if (!th.Join(limiteMs)) r = new("servico", null, null, [], $"o som do Windows não respondeu em {limiteMs / 1000} s");
         else if (erro != null) r = new("servico", null, null, [], erro.GetType().Name + ": " + erro.Message);
         else if (!ServicoRodando()) r = new("servico", null, null, [], "serviço Audiosrv parado");
-        Log?.Invoke($"cabo: {r!.Estado} {r.Cabo?.Marca ?? r.Marca} {r.Cabo?.Tocar.Nome} -> {r.Cabo?.Captar.Nome}{(r.Cabo?.Loopback == true ? " (loopback)" : "")} {r.Detalhe}".TrimEnd());
+        Log?.Invoke($"cabo: {r!.Estado} {r.Cabo?.Marca ?? r.Marca} {r.Cabo?.Tocar.Nome} -> {r.Cabo?.Captar.Nome}{(r.Cabo?.Loopback == true ? " (loopback)" : "")} {string.Join(" + ", r.Desativados)} {r.Detalhe}".TrimEnd());
         return r;
     }
 
     /// <summary>FAH mic cable: another pair than the Som one (<paramref name="som"/>). Tocar = where FAH plays the clean voice,
     /// Captar = what Windows/Discord record. Voicemeeter has no second pair FAH can use.</summary>
+    /// <summary>What a cable re-check must do. TrocarSom = reopen Som on the new cable; LigarSom = first cable ever seen, Som comes on
+    /// (Som the user turned off with a cable present stays off); RefazerMic = mic is running on the pair Som now takes.</summary>
+    public readonly record struct PlanoCabo(bool TrocarSom, bool LigarSom, bool RefazerMic, bool LigarMic);
+
+    public static PlanoCabo Replanejar(bool tinhaCabo, string? caboNovo, bool somLigado, string? caboDoSom, string? caboDoMic, bool faltaMic)
+    {
+        if (caboNovo == null) return default;
+        bool refazMic = caboDoMic == caboNovo;
+        return new(somLigado && caboDoSom != null && caboDoSom != caboNovo, !tinhaCabo && !somLigado, refazMic, faltaMic || refazMic);
+    }
+
     public static Achado DetectarMic(Cabo? som, int limiteMs = 3000)
     {
         Achado? r = null;
@@ -105,7 +117,7 @@ public static class Cabos
     /// <summary>Pure choice over a device list (no Windows calls): tested offline.</summary>
     public static Achado Escolher(List<Ponta> pontas)
     {
-        string? marcaDesligada = null; var desligados = new List<string>();
+        string? marcaDesligada = null, ligar = null; var desligados = new List<string>();
         foreach (var (marca, e) in Familias)
         {
             var fam = pontas.Where(p => e(p.Interface)).ToList();
@@ -115,12 +127,18 @@ public static class Cabos
             if (c != null) return new("achou", c, marca, [], "");
             if (marcaDesligada == null)
             {
-                // installed but not usable: list what has to be turned on (render side first, then the matching capture)
+                // installed but not usable: name only what is missing from ONE pair, with its side (both sides of a VAC line have the same name)
                 var off = fam.Where(p => p.Estado != DeviceState.Active).ToList();
-                if (off.Count > 0) { marcaDesligada = marca; desligados.AddRange(Ordem(marca, off).Select(p => p.Nome).Distinct().Take(4)); }
+                if (off.Count > 0)
+                {
+                    var par = Par(marca, fam.Where(p => p.Estado is DeviceState.Active or DeviceState.Disabled).ToList(), Preferidos);
+                    var falta = (par == null ? off.Where(p => p.Estado == DeviceState.Disabled) : off.Where(p => p.Id == par.Tocar.Id || p.Id == par.Captar.Id)).ToList();
+                    marcaDesligada = marca; desligados.AddRange(Ordem(marca, falta).Select(p => $"{p.Desc} na seção {(p.Saida ? "Saída" : "Entrada")}").Distinct().Take(2));
+                    if (par != null && par.Tocar.Id != par.Captar.Id && falta.Count == 1) ligar = falta[0].Id;   // Voicemeeter's loopback has one endpoint: no "other side"
+                }
             }
         }
-        return marcaDesligada != null ? new("desativado", null, marcaDesligada, [.. desligados], "")
+        return marcaDesligada != null ? new("desativado", null, marcaDesligada, [.. desligados], "", ligar)
             : new("falta", null, null, [], "nenhum cabo virtual instalado");
     }
 

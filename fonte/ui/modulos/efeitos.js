@@ -14,10 +14,10 @@ const Efx = (() => {
   const SOM71_EXISTE = true;
   // preset -> slider %; Mix: 100% = engine max (0.3), the loudest preset (0.5) sits at 100%
   const deP = (nome) => PRESETS[nome].map((v, i) => Math.min(100, Math.round(i === 4 ? v / .5 * 100 : v * 100)));
-  const E = (App.estado.efeitos = App.estado.efeitos || { est: { on: true, bal: 0, larg: 100, mono: false }, cf: { on: true, nivel: 'medio' }, rv: { on: false, preset: 'Reverb leve', p: deP('Reverb leve') } });
+  const E = (App.estado.efeitos = App.estado.efeitos || { est: { on: true, modo: 'auto' }, cf: { on: true, nivel: 'medio' }, rv: { on: false, preset: 'Reverb leve', p: deP('Reverb leve') } });
   App.estado.ligado = App.estado.ligado || {};
   const s71 = () => SOM71_EXISTE && App.estado.ligado.som71 !== false;
-  App.modulo({ id: 'efeitos', lado: 'som', ordem: 3, nome: 'Efeitos', icone: 'efeitos', desc: 'Estéreo, crossfeed e reverb.',
+  App.modulo({ id: 'efeitos', lado: 'som', ordem: 3, nome: 'Estéreo+', icone: 'efeitos', desc: 'Abre o som no fone.',
     previa: () => `<svg viewBox="0 0 300 100"><path d="M20 50 Q75 10 150 50 T280 50" fill="none" stroke="var(--ac)" stroke-width="3"><animate attributeName="d" dur="2.4s" repeatCount="indefinite"
       values="M20 50 Q75 10 150 50 T280 50;M20 50 Q75 90 150 50 T280 50;M20 50 Q75 10 150 50 T280 50"/></path></svg>` });
 

@@ -54,7 +54,7 @@ sealed class Janela : Form
         BackColor = Color.FromArgb(28, 28, 30);
         FormBorderStyle = FormBorderStyle.None;       // own title bar (uiasearra.js)
         Padding = new Padding(Borda);
-        var ico = Path.Combine(Base.Raiz, "fah.ico");
+        var ico = Path.Combine(Base.Ui, "fah.ico");
         Icon = File.Exists(ico) ? new Icon(ico) : SystemIcons.Application;
         Controls.Add(web);
         AtualizarBandeja();
@@ -330,7 +330,7 @@ sealed class Janela : Form
                     try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true }); }
                     catch (Exception x) { Base.Log("webview: abrir página: " + x.Message); }
             }
-            else MessageBox.Show("O FAH não conseguiu montar a tela. O motivo ficou gravado no arquivo fah.log, na pasta relatorios.", "FAH", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            else MessageBox.Show("O FAH não conseguiu montar a tela. O motivo ficou gravado no arquivo fah.log, na pasta usuario\\relatorios.", "FAH", MessageBoxButtons.OK, MessageBoxIcon.Error);
             sair = true; Close();                     // normal exit path: Motor.Dispose gives the Windows default back
             return;
         }
@@ -401,7 +401,7 @@ sealed class Janela : Form
                 case "mixapp": mesa.VolumePrograma(Txt(r, "lado"), Txt(r, "x"), r.TryGetProperty("vol", out var av) ? av.GetInt32() : null, r.TryGetProperty("m", out var am) ? am.GetBoolean() : null, r.TryGetProperty("s", out var asv) ? asv.GetBoolean() : null); break;
                 case "mixfixar": mesa.Fixar(Txt(r, "lado"), Txt(r, "x"), Txt(r, "n"), r.TryGetProperty("id", out var fi) && fi.ValueKind == JsonValueKind.String ? fi.GetString() : null); break;
                 case "mixpadrao": { bool mic = Txt(r, "lado") == "mic"; string id = Txt(r, "id"); Task.Run(() => { motor.TrocarPadrao(mic, id); mesa.Fazer(() => { }); }); break; }
-                case "cabo?": Task.Run(() => { var a = motor.ConferirCabo(); if (a.Cabo != null && !motor.Ligado) motor.Ligar(); }); break;
+                case "cabo?": Task.Run(motor.RefazerCabo); break;
                 case "abrir": Abrir(Txt(r, "url")); break;
                 case "log": Base.Log("ui: " + r.GetProperty("texto").GetString()); break;
             }

@@ -224,7 +224,7 @@ static class Atualizador
                 "$n = 0",
                 "while (@(Get-Process -Name FAH -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }).Count -gt 0 -and $n -lt 40) { $n++; Start-Sleep -Milliseconds 500 }",
                 // top-level user folders only (full paths): ui\dados and modulos\*\dados ship with the release and must update
-                "$pastas = 'config','dados','relatorios','webview','backup','atualizacao'",
+                "$pastas = 'usuario','config','dados','relatorios','webview','backup','atualizacao'",
                 "$xd = $pastas | ForEach-Object { Join-Path $novo $_ }",
                 "$xdp = $pastas | ForEach-Object { Join-Path $prog $_ }",
                 // copy of the current program first: a copy that fails halfway (antivirus lock) is undone instead of leaving old + new mixed

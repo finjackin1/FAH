@@ -45,7 +45,8 @@
   const SECOES = [
     ['geral', 'Geral', 'engr', () => P('Ao ligar o PC', L('Iniciar com o Windows', UI.switch(inicio(), { campo: 'inicio' })) + L('Começar escondido na bandeja', S('minimizado')))
       + P('Janela', L('Tamanho: Máx. 1440 × 810 ou Mín. 1080 × 608 · também segurando o maximizar', UI.segmento([['max', 'Máx.'], ['min', 'Mín.']], E.tam === 'min' ? 'min' : 'max', { campo: 'tam' }))
-        + L('Fechar no X manda para a bandeja', S('xBandeja')) + L('Ícone da bandeja fica cinza com o som desligado', S('iconeEstado')) + L('Animações', S('anim')))],
+        + L('Fechar no X manda para a bandeja', S('xBandeja')) + L('Ícone da bandeja fica cinza com o som desligado', S('iconeEstado')) + L('Animações', S('anim')))
+      + P('Cabo virtual', L('Procurar o cabo de novo e ver o que funciona com ele', '<button class="bt" data-cabo-tela="1">Abrir tela do cabo</button>'))],
     ['atalhos', 'Atalhos', 'tecla', () => P('Teclas de atalho', Object.keys(NOMES).map((id) => L(NOMES[id], botaoAtalho(id))).join('')
       + '<p class="dica">Clique e aperte as teclas, com Ctrl, Alt, Shift ou Win junto. Esc cancela, Delete tira o atalho. Funcionam com o FAH escondido e com outro programa na frente.</p>')],
     ['backup', 'Backup', 'caixa', () => P('Suas configurações', L('Exportar tudo (presets e módulos)', '<button class="bt" data-bk="exportar">Salvar arquivo…</button>')
@@ -104,6 +105,7 @@
           return setTimeout(() => { if (bk.isConnected) bk.textContent = 'Abrir…'; }, 4000); }
           bk.textContent = bk.dataset.bk === 'importar' ? 'Abrir…' : bk.textContent; return App.motor.enviar({ tipo: 'backup', acao: bk.dataset.bk }); }
         if (e.target.closest('[data-peq]')) return abrirPeq();
+        if (e.target.closest('[data-cabo-tela]')) return App.cabo.abrir();
         const at = e.target.closest('[data-att-bt]'); if (at) App.motor.enviar({ tipo: 'atualizar', acao: at.dataset.acao }); });
       const parar = () => { if (!ouvindo) return; const b = ouvindo; ouvindo = null; trocaBt(b); };
       addEventListener('keydown', (e) => { if (!ouvindo) return; e.preventDefault(); e.stopImmediatePropagation();
