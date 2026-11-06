@@ -15,6 +15,8 @@ const Efx = (() => {
   // preset -> slider %; Mix: 100% = engine max (0.3), the loudest preset (0.5) sits at 100%
   const deP = (nome) => PRESETS[nome].map((v, i) => Math.min(100, Math.round(i === 4 ? v / .5 * 100 : v * 100)));
   const E = (App.estado.efeitos = App.estado.efeitos || { est: { on: true, modo: 'auto' }, cf: { on: true, nivel: 'medio' }, rv: { on: false, preset: 'Reverb leve', p: deP('Reverb leve') } });
+  // E+ card (estereo.js) keeps est = {on, modo, niv}; this screen still draws the old width/balance: default them so the drawing has numbers
+  E.est = E.est || { on: true }; if (E.est.bal == null) E.est.bal = 0; if (E.est.larg == null) E.est.larg = 100; if (E.est.mono == null) E.est.mono = false;
   App.estado.ligado = App.estado.ligado || {};
   const s71 = () => SOM71_EXISTE && App.estado.ligado.som71 !== false;
   App.modulo({ id: 'efeitos', lado: 'som', ordem: 3, nome: 'Estéreo+', icone: 'efeitos', desc: 'Abre o som no fone.',

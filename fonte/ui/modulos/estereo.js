@@ -1,5 +1,5 @@
 // Estéreo+ (04/11, approved docs\prototipos\estereo\cartao.html): Início card only, no module screen. Switch = ligado.efeitos,
-// popup button = efeitos.est.modo (auto|jogo|musica|filme). Auto: engine detects what plays and sends "estauto" {modo, fonte}.
+// popup button = efeitos.est.modo (auto|jogo|musica|filme); chip beside it = efeitos.est.niv (bool, "Nivelar volume", approved variant B 05/11: docsprototiposestereoESCOLHIDA-nivelador.md). Auto: engine detects what plays and sends "estauto" {modo, fonte}.
 // Som 7.1 on = paused. Engine: fonte\Modulos\Efeitos (width per mode, side highpass ~120 Hz). Loads before telas/inicio.js.
 const Est = (() => {
   const S = App.estado;
@@ -7,13 +7,14 @@ const Est = (() => {
   const NOME = Object.fromEntries(MODOS);
   const ABRE = { jogo: 45, musica: 70, filme: 90 };
   const DIZ = { auto: 'Muda sozinho conforme o que toca', jogo: 'Pouca abertura, direção precisa', musica: 'Aberto, voz e graves no centro', filme: 'Bem amplo, falas no centro' };
-  const E = () => { const e = (S.efeitos = S.efeitos || {}); e.est = e.est || { on: true }; if (!NOME[e.est.modo]) e.est.modo = 'auto'; return e.est; };
+  const E = () => { const e = (S.efeitos = S.efeitos || {}); e.est = e.est || { on: true }; if (!NOME[e.est.modo]) e.est.modo = 'auto'; if (typeof e.est.niv !== 'boolean') e.est.niv = false; if (typeof e.est.larg !== 'number') e.est.larg = 100; if (typeof e.est.bal !== 'number') e.est.bal = 0; return e.est; };
   E();
   const modo = () => E().modo;
   const efetivo = () => (modo() === 'auto' ? (ABRE[S.estauto?.modo] ? S.estauto.modo : 'musica') : modo());
   const on = () => (S.ligado || {}).efeitos !== false;
   const pausa = () => (S.ligado || {}).som71 !== false;
   const parado = () => !on() || pausa();
+  const niv = () => E().niv === true;
   let abre = ABRE[efetivo()];
 
   // fan drawing (same as the prototype, small size only)
@@ -42,6 +43,15 @@ const Est = (() => {
     <rect class="gl g-filme" x="8.4" y="9.6" width="7.2" height="4.8" rx="1"/></svg>`;
   const SEL = '<svg class="sel" viewBox="0 0 16 16"><path d="M5 6.5 8 4l3 2.5M5 9.5 8 12l3-2.5"/></svg>';
   const OK = '<svg class="ok" viewBox="0 0 14 14"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>';
+  // leveler glyph = 4 bars; off: uneven heights, on: all pulled to the same line (morph = the state) + gold ceiling line
+  const NG = () => `<svg class="nv-gl ${niv() ? 'on' : ''}" viewBox="0 0 16 16" aria-hidden="true"><line class="b1" x1="3" y1="3" x2="3" y2="13"/><line class="b2" x1="6.33" y1="3" x2="6.33" y2="13"/>`
+    + `<line class="b3" x1="9.67" y1="3" x2="9.67" y2="13"/><line class="b4" x1="13" y1="3" x2="13" y2="13"/><line class="teto" x1="1" y1="5.5" x2="15" y2="5.5"/></svg>`;
+  const NDICA = 'Nivelar volume|Sons baixos sobem e altos descem devagar: nada estoura, nada some. Bom pra filme de madrugada · Clique: liga ou desliga';
+  const nivChip = () => `<button class="nv-bt nv-b ${niv() ? 'on' : ''}" data-nv aria-pressed="${niv()}" data-dica="${NDICA}">${NG()}<span>${niv() ? 'Volume nivelado' : 'Volume livre'}</span></button>`;
+  // ceiling arc over the fan (same geometry as campo small: 328x104)
+  const teto = () => { const cx = 164, cy = 88, R = 76 * .86, a = (12 + abre * .68) * Math.PI / 180;
+    const x1 = cx - Math.sin(a) * R, y1 = cy - Math.cos(a) * R, x2 = cx + Math.sin(a) * R, l = Math.ceil(2 * a * R) + 2;
+    return `<path class="nv-teto ${niv() && !parado() ? 'on' : ''} ${parado() ? 'cinza' : ''}" style="--l:${l}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${R} ${R} 0 0 1 ${x2.toFixed(1)} ${y1.toFixed(1)}"/>`; };
   const txt2 = () => (!on() ? 'O som passa direto' : pausa() ? 'Pausado pelo Som 7.1' : DIZ[modo()]);
 
   document.head.insertAdjacentHTML('beforeend', `<style>
@@ -70,6 +80,22 @@ const Est = (() => {
 .es-bt .sel{width:16px;height:16px;fill:none;stroke:var(--fg2);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .t-inicio [data-card=efeitos].off .es-bt span{color:var(--fg2)}
 @keyframes es-entra{from{opacity:0;transform:translateY(4px)}}
+/* leveler (05/11, variant B) */
+.es-linha{display:flex;gap:8px;align-items:center;align-self:stretch}
+.nv-gl{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;overflow:visible;flex:none}
+.nv-gl line{transition:transform .45s var(--curva);transform-box:fill-box;transform-origin:50% 100%}
+.nv-gl .b1{transform:scaleY(.5)}.nv-gl .b2{transform:scaleY(1)}.nv-gl .b3{transform:scaleY(.3)}.nv-gl .b4{transform:scaleY(.75)}
+.nv-gl.on line{transform:scaleY(.6)}
+.nv-gl .teto{transform:none;stroke-width:1.2;opacity:0;transition:opacity .3s}.nv-gl.on .teto{opacity:.9;transform:none}
+.nv-bt{height:32px;border:0;border-radius:8px;background:var(--controle);color:var(--fg2);font:13px var(--fonte);cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  transition:background .2s,color .2s;flex:none}
+.nv-bt:hover{background:var(--controle-forte)}.nv-bt:focus-visible{outline:2px solid var(--fg3);outline-offset:2px}
+.nv-bt.on{background:rgba(255,159,10,.16);color:var(--som)}.nv-bt.on:hover{background:rgba(255,159,10,.24)}
+.nv-bt .nv-gl{width:16px;height:16px}
+.nv-b{flex:1;min-width:0;padding:0 12px 0 10px}.nv-b span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nv-b span.entra{animation:es-entra .3s var(--curva)}
+.t-inicio [data-card=efeitos].off .nv-bt.on{background:var(--controle);color:var(--fg2)}
+.nv-teto{fill:none;stroke:#ffd27a;stroke-width:1.5;stroke-linecap:round;filter:drop-shadow(0 0 4px #ffb340);stroke-dasharray:var(--l);stroke-dashoffset:var(--l);transition:stroke-dashoffset .5s var(--curva),opacity .3s}
+.nv-teto.on{stroke-dashoffset:0}.nv-teto.cinza{opacity:.3;filter:grayscale(1)}
 .es-fundo{position:fixed;inset:0;z-index:89}
 .es-menu{position:fixed;z-index:90;box-sizing:border-box;padding:6px;border-radius:10px;background:rgba(44,44,46,.97);backdrop-filter:blur(20px);
   box-shadow:0 0 0 .5px rgba(255,255,255,.12),0 14px 40px rgba(0,0,0,.6);outline:none;animation:es-abre .22s var(--curva) both}
@@ -86,7 +112,7 @@ const Est = (() => {
   const card = () => document.querySelector('.t-inicio [data-card=efeitos]');
   // first draw keeps its entrance; Início redraws later (engine events) must not replay it
   let ja = false;
-  const vis = () => `<svg viewBox="0 0 328 104" style="width:100%;height:100%">${campo(328, 104, abre, parado())}</svg>`;
+  const vis = () => `<svg viewBox="0 0 328 104" style="width:100%;height:100%">${campo(328, 104, abre, parado())}${teto()}</svg>`;
   const desenha = () => { const v = card()?.querySelector('.vis'); if (v) v.innerHTML = vis(); };
 
   // whole card for inicio.js no(): left, width, entrance delay
@@ -96,7 +122,7 @@ const Est = (() => {
       data-dica="${sem ? `Estéreo+|${App.cabo.motivo()}: o som do PC só passa por aqui com um cabo virtual.` : 'Estéreo+|Deixa o som bem mais largo, de um lado do fone ao outro, sem eco nem sala. Escolha o modo no botão · Chave: liga ou desliga|Desligado, o som passa direto por aqui'}">
       <div class="t">${icone(modo(), efetivo())}<b>Estéreo+</b><button class="chave ${o ? 'on' : ''}" data-chave="efeitos" aria-label="Estéreo+: ${o ? 'ligado' : 'desligado'}"></button></div>
       <div class="vis${ja ? ' es-sem-anim' : ''}">${vis()}</div>
-      <button class="es-bt" aria-haspopup="listbox" aria-expanded="false" aria-label="Modo do Estéreo+">${icone(modo(), efetivo())}<span>${NOME[modo()]}</span>${SEL}</button>
+      <div class="es-linha"><button class="es-bt" aria-haspopup="listbox" aria-expanded="false" aria-label="Modo do Estéreo+">${icone(modo(), efetivo())}<span>${NOME[modo()]}</span>${SEL}</button>${nivChip()}</div>
       <div class="res2">${txt2()}</div></div>`; };
 
   let tw = 0;
@@ -107,9 +133,16 @@ const Est = (() => {
   const aplica = () => { const c = card(); if (!c) { abre = ABRE[efetivo()]; return; }
     c.querySelectorAll('.pr-ic').forEach((s) => { s.dataset.g = modo(); s.dataset.a = efetivo(); }); poe2(c);
     c.querySelector('.es-gr')?.classList.toggle('cinza', parado());
+    const tt = c.querySelector('.nv-teto'); if (tt) { tt.classList.toggle('cinza', parado()); tt.classList.toggle('on', niv() && !parado()); }
     const alvo = ABRE[efetivo()]; if (alvo !== abre) vai(abre, alvo, (x) => { abre = x; desenha(); }, 520); };
   const escolhe = (m) => { if (m === modo()) return; E().modo = m; const b = card()?.querySelector('.es-bt span');
     if (b) { b.textContent = NOME[m]; b.classList.remove('entra'); void b.offsetWidth; b.classList.add('entra'); } aplica(); };
+  // leveler toggled in place: glyph bars morph, label fades, the ceiling draws itself
+  const nivela = () => { const e = E(); e.niv = !niv(); const c = card(); if (!c) return;
+    c.querySelector('.nv-gl')?.classList.toggle('on', niv());
+    const b = c.querySelector('[data-nv]'); if (b) { b.classList.toggle('on', niv()); b.setAttribute('aria-pressed', niv());
+      const sp = b.querySelector('span'); if (sp) { sp.textContent = niv() ? 'Volume nivelado' : 'Volume livre'; sp.classList.remove('entra'); void sp.offsetWidth; sp.classList.add('entra'); } }
+    c.querySelector('.nv-teto')?.classList.toggle('on', niv() && !parado()); };
   // switch toggled in place (animates; no full Início redraw)
   // Estéreo+ and Som 7.1 never on together (04/11): turning one on turns the other off; both saved on -> 7.1 wins
   const exclui = () => { S.ligado = S.ligado || {}; if (Efx.s71() && S.ligado.efeitos !== false) S.ligado.efeitos = false; };
@@ -148,8 +181,9 @@ const Est = (() => {
   addEventListener('fah:estauto', () => { if (modo() === 'auto') aplica(); });
 
   // inicio.js hands card clicks/keys here: true = handled (card itself opens nothing)
-  const clique = (ev) => { if (ev.target.closest('[data-chave]')) alterna(); else if (ev.target.closest('.es-bt')) abrir(); return true; };
-  const tecla = (ev) => { const noBt = ev.target.closest('.es-bt');
+  const clique = (ev) => { if (ev.target.closest('[data-chave]')) alterna(); else if (ev.target.closest('[data-nv]')) nivela(); else if (ev.target.closest('.es-bt')) abrir(); return true; };
+  const tecla = (ev) => { if (ev.target.closest('[data-nv]') && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); nivela(); return true; }
+    const noBt = ev.target.closest('.es-bt');
     if (noBt && ['Enter', ' ', 'ArrowUp', 'ArrowDown'].includes(ev.key)) { ev.preventDefault(); abrir(); return true; }
     if (ev.key === 'Enter') return true;
     if (ev.key === ' ') { ev.preventDefault(); alterna(); return true; }

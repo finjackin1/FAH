@@ -1,4 +1,4 @@
-// Effects module (Som side). "efeitos".est {on, modo auto|jogo|musica|filme} = Estéreo+ card (Início, switch "ligado".efeitos);
+// Effects module (Som side). "efeitos".est {on, modo auto|jogo|musica|filme, niv} = Estéreo+ card (Início, switch "ligado".efeitos); niv = "Nivelar volume" (leveler, 90, only while Estéreo+ is really on);
 // "efeitos".cf / .rv = crossfeed (20) and reverb (80), shown on the EQ screen since 04/11 -> follow the EQ switch ("ligado".eq).
 // Also reads "ligado" (module switches on the device screen) without owning it.
 using System.Text.Json;
@@ -15,6 +15,8 @@ public sealed class Modulo : IModulo
     readonly EstereoMais est = new();
     readonly Crossfeed cf = new();
     readonly Reverb rv = new();
+    readonly Nivelador nv = new();
+    bool nivOn;
     readonly double[] rp = new double[7];
     bool modOn = true, eqOn = true, s71, estOn = true, cfOn = true, rvOn;
     // Estéreo+ (05/11 v4): out of the head, centre untouched (EstereoMais), profile Jogo/Música/Filme; Auto follows what is playing (same detector as Som 7.1, own copy)
@@ -28,11 +30,12 @@ public sealed class Modulo : IModulo
     public string Nome => "Efeitos";
     public IReadOnlyList<IEfeito> Efeitos { get; }
 
-    public Modulo() => Efeitos = [new Efeito("crossfeed", 20, cf.Preparar, cf.Processar), new Efeito("estereo", 70, est.Preparar, est.Processar), new Efeito("reverb", 80, rv.Preparar, rv.Processar)];
+    public Modulo() => Efeitos = [new Efeito("crossfeed", 20, cf.Preparar, cf.Processar), new Efeito("estereo", 70, est.Preparar, est.Processar), new Efeito("reverb", 80, rv.Preparar, rv.Processar), new Efeito("nivelar", 90, nv.Preparar, nv.Processar)];
 
     public EstereoMais Estereo => est;
     public Crossfeed Crossfeed => cf;
     public Reverb Reverb => rv;
+    public Nivelador Nivelador => nv;
 
     public void Iniciar(IHost h) { host = h; relogio = new Timer(_ => Observar(), null, 2000, 2000); }
     public void Parar() => relogio?.Dispose();
@@ -69,7 +72,7 @@ public sealed class Modulo : IModulo
         if (chave != "efeitos") return false;
         if (v.TryGetProperty("est", out var e))
         {
-            estOn = Bool(e, "on", true);
+            estOn = Bool(e, "on", true); nivOn = Bool(e, "niv", false);
             if (e.TryGetProperty("modo", out var mo) && mo.ValueKind == JsonValueKind.String) modo = mo.GetString() is "jogo" or "musica" or "filme" ? mo.GetString()! : "auto";
         }
         if (v.TryGetProperty("cf", out var c))
@@ -100,6 +103,7 @@ public sealed class Modulo : IModulo
         if (est.Erro != null) host?.Log("estéreo+: " + est.Erro);
         cf.Ligado = eqOn && cfOn; cf.Permitido = !s71 && !est.Ligado;
         rv.Ligado = eqOn && rvOn;
+        nv.Ligado = est.Ligado && nivOn;
     }
 
     static bool Bool(JsonElement o, string k, bool pad) => o.TryGetProperty(k, out var x)

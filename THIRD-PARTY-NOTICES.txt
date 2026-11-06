@@ -79,4 +79,6 @@ SADIE II (medições de cabeça, Som 7.1)
 
 Virtual Audio Cable, VB-CABLE e Voicemeeter pertencem aos seus donos. O
 FAH usa esses cabos virtuais, mas não tem ligação com os fabricantes e
-não distribui nenhum deles.
+não distribui nenhum deles. Quando você pede, baixa o instalador do site
+do fabricante (VB-CABLE e Virtual Audio Cable Lite) e confere a assinatura
+digital antes de abrir.

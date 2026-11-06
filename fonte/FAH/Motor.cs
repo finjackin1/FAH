@@ -118,15 +118,25 @@ sealed partial class Motor : IHost, IDisposable
         Cabos.Log = null;
         if (antes != null && (antes.Estado != a.Estado || antes.Cabo?.Tocar.Nome != a.Cabo?.Tocar.Nome)) Log($"cabo: {a.Estado} {a.Cabo?.Tocar.Nome ?? a.Marca} {a.Detalhe}".TrimEnd());
         Cabo = a;
+        if (a.Estado == "falta" && !instalaTentou)   // no cable at all: install (once until a cable shows up again)
+        {
+            if (TomarInstala()) { instalaTentou = true; Task.Run(ExecutarInstala); }
+            else if (Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO") != null) instalaErro ??= "Simulação: o FAH não instala cabos.";   // locked screen needs a button
+        }
         CaboStatus();
         return a;
     }
 
-    public void CaboStatus()
+    public void CaboStatus() => EnviarCabo();
+
+    void EnviarCabo(string? fase = null, int? pct = null)
     {
         var a = Cabo;
         if (a == null) return;
-        Enviar("cabo", new { estado = a.Estado, marca = a.Cabo?.Marca ?? a.Marca, nome = a.Cabo?.Tocar.Nome, desativados = a.Desativados, vac = a.Cabo?.Vac ?? false });
+        if (a.Estado == "achou") { instalaReiniciar = false; instalaErro = null; instalaTentou = false; }   // cable removed later = install again
+        var (estado, erro) = Cabos.EstadoParaUi(a.Estado, Volatile.Read(ref instalaOcupado) == 1, instalaReiniciar, instalaErro);
+        if (estado == "instalando") { if (fase != null) { instalaFase = fase; instalaPct = pct; } fase = instalaFase; pct = instalaPct; } else { fase = null; pct = null; }
+        Enviar("cabo", new { estado, marca = a.Cabo?.Marca ?? a.Marca, nome = a.Cabo?.Tocar.Nome, desativados = a.Desativados, vac = a.Cabo?.Vac ?? false, erro, fase, pct });
     }
 
     string? caboLigado;     // cable Som opened last (only read while Som is on; the 7.1 switch reopens the same one)

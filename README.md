@@ -15,7 +15,7 @@ O FAH recebe o som dos programas por um cabo virtual, aplica os ajustes e entreg
 
 ## Como usar
 
-1. Instale um cabo virtual (tabela abaixo). Sem ele o FAH avisa e não liga o som.
+1. Tenha um cabo virtual (tabela abaixo). Sem nenhum, o FAH oferece baixar e instalar o VB-CABLE. Para o microfone ele também oferece o Virtual Audio Cable Lite, grátis.
 2. Baixe `FAH-win-x64.zip` em [Releases](https://github.com/finjackin1/FAH/releases).
 3. Extraia a pasta onde quiser e abra `FAH.exe`. Não precisa instalar. O Windows pode alertar na primeira vez porque o programa não tem assinatura digital.
 
@@ -30,8 +30,11 @@ Em uma pasta sem permissão de escrita, como `Arquivos de Programas`, os ajustes
 | Cabo | Som | Som 7.1 dos jogos | Microfone |
 |---|---|---|---|
 | [Virtual Audio Cable](https://vac.muzychenko.net/) (pago, não o Lite) | Sim | Sim | Sim, com `Cables` em 2 no painel do VAC |
-| [VB-CABLE](https://vb-audio.com/Cable/) | Sim | Não | Só com o CABLE-A instalado junto |
+| [VB-CABLE](https://vb-audio.com/Cable/) | Sim | Não | Só com outro cabo instalado junto |
+| [Virtual Audio Cable Lite](https://vac.muzychenko.net/) (grátis, uso doméstico) | Só se for o único | Não | Sim, junto com o VB-CABLE |
 | [Voicemeeter](https://vb-audio.com/Voicemeeter/) | Sim | Não | Não |
+
+O instalador do Virtual Audio Cable Lite não tem modo silencioso: o FAH baixa, confere a assinatura e abre a janela dele, e você aceita a licença e confirma. O FAH faz isso sozinho só uma vez, logo depois de instalar o VB-CABLE. Depois disso, só pelo botão "Instalar cabo do microfone".
 
 Na primeira vez que o FAH coloca o Virtual Audio Cable em 7.1, o Windows pode pedir permissão de administrador. Se você recusar, o cabo fica em estéreo.
 

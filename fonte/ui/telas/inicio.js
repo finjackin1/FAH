@@ -25,7 +25,7 @@
   .t-inicio .pilula.on .pt{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .t-inicio .pilula.espera .pt{animation:i-pulsa 1s infinite}
   .t-inicio .pilula.segura{background:var(--som);color:#000}.t-inicio .pilula.segura svg{color:#000}
-  .t-inicio .pilula.forte{background:var(--fg);color:#000}
+  .t-inicio .pilula.forte{background:var(--fg);color:#000}.t-inicio .pilula.forte svg{color:#000}
   @keyframes i-pulsa{50%{opacity:.35}}
   .t-inicio .fio{position:absolute;left:0;top:0;width:1280px;height:680px;pointer-events:none}
   .t-inicio .fio .base{stroke:var(--bg3);stroke-width:2;fill:none}
@@ -108,6 +108,7 @@
 
   const SV = {
     nota: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+    baixa: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     ouvido: '<path d="M7 9a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-6 0"/><path d="M10 9a2 2 0 0 1 4 0"/>',
     jogo: '<rect x="2.5" y="7" width="19" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M16 12h.5M18 13.5h.5"/>',
   };
@@ -235,7 +236,8 @@
       <button class="mic ${som ? '' : 'on'}" role="tab" data-vista="mic" data-dica="Microfone|O caminho da sua voz até as chamadas e jogos">Microfone</button></div>`;
     // no cable: dimmed but hoverable (a native disabled button shows no tip), click repeats the reason
     const trava = (ok, sem) => (ok ? '' : sem ? 'aria-disabled="true"' : 'disabled');
-    const comparar = !som ? `<button class="pilula ${mm.ouvirSai ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvirsai" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir o que sai no microfone|' + q(motivoMic()) : 'Ouvir o que sai no microfone|Você ouve no fone tudo o que a chamada recebe: sua voz e os programas mandados para o microfone.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir o que sai</button><button class="pilula ${mm.ouvir ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvir" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir minha voz|' + q(motivoMic()) : 'Ouvir minha voz|Você ouve no fone a voz como os outros vão ouvir.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir minha voz</button>` : erro ? `<button class="pilula forte" id="tenta">Tentar de novo</button>`
+    const comparar = !som && semCabo && mm.podeInstalar ? `<button class="pilula forte" id="micinst" data-dica="Instalar cabo do microfone|O FAH baixa o Virtual Audio Cable Lite, que é grátis, e abre o instalador dele.|Aceite a licença e deixe a pasta como está">${ico('baixa')}Instalar cabo do microfone</button>`
+      : !som ? `<button class="pilula ${mm.ouvirSai ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvirsai" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir o que sai no microfone|' + q(motivoMic()) : 'Ouvir o que sai no microfone|Você ouve no fone tudo o que a chamada recebe: sua voz e os programas mandados para o microfone.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir o que sai</button><button class="pilula ${mm.ouvir ? 'ouve' : ''}${semCabo ? ' apagada' : ''}" id="ouvir" ${trava(ml, semCabo)} data-dica="${semCabo ? 'Ouvir minha voz|' + q(motivoMic()) : 'Ouvir minha voz|Você ouve no fone a voz como os outros vão ouvir.|Use fone para não dar microfonia'}">${ico('ouvido')}Ouvir minha voz</button>` : erro ? `<button class="pilula forte" id="tenta">Tentar de novo</button>`
       : `<button class="pilula ${V.comparar ? 'segura' : ''}${semS ? ' apagada' : ''}" id="cmp" ${trava(lig, semS)} data-dica="${semS ? 'Comparar|' + q(motivoSom()) : 'Comparar|Segure para ouvir sem o FAH. Solte e ele volta.|Atalho: segure C'}">${ico('ouvido')}Segure para comparar</button>`;
     const caminho = som
       ? `<div class="no ponta sobe" style="left:${X[0]}px;width:${LW[0]}px" data-dica="De onde vem|O programa que está tocando som agora"><div class="t">${ico('nota')}<b>Tocando</b></div>${fonte}</div>
@@ -336,6 +338,7 @@
           if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
         if (ev.target.closest('#liga')) { const l = ligado(); V.espera = l ? 'Desligando…' : 'Ligando…'; App.motor.enviar({ tipo: l ? 'desligar' : 'ligar' });
           if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
+        if (ev.target.closest('#micinst')) { App.motor.enviar({ tipo: 'cabo-mic-instalar' }); return; }
         if (ev.target.closest('#tenta')) { V.espera = 'Ligando…'; App.motor.enviar({ tipo: 'ligar' }); if (!App.motor.conectado) V.espera = ''; redesenhar(); return; }
         const sc = ev.target.closest('.sem-cabo'); if (sc) { ev.stopPropagation(); toast(sc.dataset.lado === 'mic' ? motivoMic() : motivoSom(), 5000); return; }
         if (ev.target.closest('[data-card=efeitos]')) { ev.stopPropagation(); Est.clique(ev); return; }   // Estéreo+: no screen, handles itself

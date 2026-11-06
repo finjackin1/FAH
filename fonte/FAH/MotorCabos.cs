@@ -19,9 +19,14 @@ sealed partial class Motor
     /// Any failure = the check's original answer, so the veil names the side to turn on by hand.</summary>
     Achado LigarOutroLado(Achado a)
     {
-        if (a.Ligar is not { } id || Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO") != null) return a;
+        if (Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO") != null) return a;
+        // half-on pair: the missing side. Both sides off (05/11): every disabled endpoint of the chosen pair, no question asked.
+        string[] ids = a.Ligar is { } um ? [um] : a.Estado == "desativado" ? a.DesativadosIds : [];
+        if (ids.Length == 0) return a;
+        string id = string.Join(",", ids);
         lock (ladoRecusado) if (ladoRecusado.Contains(id)) return a;
-        int hr; try { hr = PadraoWindows.Visivel(id, true); } catch (Exception e) { hr = e.HResult; }
+        int hr = 0;
+        foreach (var x in ids) { int h; try { h = PadraoWindows.Visivel(x, true); } catch (Exception e) { h = e.HResult; } if (h != 0 && hr == 0) hr = h; }
         if (hr == 0)
         {
             Cabos.Log = null;

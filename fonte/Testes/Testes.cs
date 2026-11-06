@@ -454,6 +454,39 @@ const int T = 48000;
     Ok("reverb", ruins.Count == 0 && intacto, ruins.Count == 0 ? $"8 cenas com cauda que cai até 8 s, pico no ruído {piorPico:F2}; desligado volta intacto {intacto}" : "com problema: " + string.Join("; ", ruins));
 }
 
+// 11b. Leveler (05/11): quiet passage rises over seconds, loud one is lowered, a sudden +20 dB blast stays bounded (guard), off = bit-identical
+{
+    // stereo noise at a given RMS dBFS, in 480-frame blocks; returns output
+    float[] Ruido(double db, double seg, int semente) { int n = (int)(T * seg); var x = new float[n * 2]; var rr = new Random(semente); double a = Math.Pow(10, db / 20) * Math.Sqrt(3);
+        for (int i = 0; i < x.Length; i++) x[i] = (float)((rr.NextDouble() * 2 - 1) * a); return x; }
+    void Roda(Fx.Nivelador nv, float[] x) { for (int i = 0; i + 480 <= x.Length / 2; i += 480) nv.Processar(x.AsSpan(2 * i, 960), 480); }
+    var nv = new Fx.Nivelador { Ligado = true }; nv.Preparar(T);
+    // quiet: -40 dB for 12 s; gain in dB sampled over time
+    var q = Ruido(-40, 12, 1); var gq = new List<double>();
+    for (int i = 0; i + 480 <= q.Length / 2; i += 480) { nv.Processar(q.AsSpan(2 * i, 960), 480); if (i % (T / 4) == 0) gq.Add(nv.GanhoDb); }
+    double gFim = gq[^1];
+    int t63 = gq.FindIndex(v => v >= gFim * .63);
+    var lo = Ruido(-6, 12, 2); var nv2 = new Fx.Nivelador { Ligado = true }; nv2.Preparar(T); Roda(nv2, lo); double gAlto = nv2.GanhoDb;
+    // blast: 3 s of -40 dB, then 1 s of +20 dB (-20 dB) noise; output peak vs input peak
+    var nv3 = new Fx.Nivelador { Ligado = true }; nv3.Preparar(T); var b1 = Ruido(-40, 8, 3); Roda(nv3, b1); double gAntes = nv3.GanhoDb;
+    var ex = Ruido(-14, 1, 4); var ex0 = (float[])ex.Clone(); Roda(nv3, ex);
+    double pIn = ex0.Max(v => Math.Abs(v)), pOut = 0; for (int i = 2 * T / 5; i < ex.Length; i++) pOut = Math.Max(pOut, Math.Abs(ex[i]));      // after the 5 ms delay is filled with the blast
+    double inicio = 0; for (int i = 0; i < 2 * 240 + 2 * 48; i++) inicio = Math.Max(inicio, Math.Abs(ex[i]));
+    var off = new Fx.Nivelador(); off.Preparar(T); var z = Ruido(-30, 1, 5); var z0 = (float[])z.Clone(); Roda(off, z);
+    // on then off: back to bit-identical after the fade
+    var nv4 = new Fx.Nivelador { Ligado = true }; nv4.Preparar(T); Roda(nv4, Ruido(-40, 3, 6)); nv4.Ligado = false; Roda(nv4, Ruido(-40, 1, 7));
+    var w = Ruido(-30, 1, 8); var w0 = (float[])w.Clone(); Roda(nv4, w);
+    // switching on/off mid-sound: no click (largest sample step stays near the sine's own; a hard switch to the 5 ms delayed copy jumps ~1.4x amplitude)
+    var nv5 = new Fx.Nivelador(); nv5.Preparar(T); var sn = new float[T * 3]; for (int i = 0; i < T * 3 / 2; i++) sn[2 * i] = sn[2 * i + 1] = (float)(0.25 * Math.Sin(2 * Math.PI * 250 * i / T));
+    double passoIn = 0; for (int i = 1; i < sn.Length / 2; i++) passoIn = Math.Max(passoIn, Math.Abs(sn[2 * i] - sn[2 * i - 2]));
+    for (int i = 0; i + 480 <= sn.Length / 2; i += 480) { nv5.Ligado = i >= T / 2 && i < T; nv5.Processar(sn.AsSpan(2 * i, 960), 480); }
+    double passoOut = 0; for (int i = 1; i < sn.Length / 2; i++) passoOut = Math.Max(passoOut, Math.Abs(sn[2 * i] - sn[2 * i - 2]));
+    bool semClique = passoOut < passoIn * 2.5;
+    bool ok = semClique &&gFim > 3 && gFim < 6 && t63 >= 0 && t63 * .25 >= 0.5 && t63 * .25 <= 5 && gAlto < -2 && z.SequenceEqual(z0) && w.SequenceEqual(w0)
+        && pOut < pIn * 1.5 && inicio < pIn * 1.5 * Math.Pow(10, gAntes / 20) && !double.IsNaN(pOut);
+    Ok("nivelador", ok, $"baixo (-40 dB): ganho {gFim:F1} dB (63% em {t63 * .25:F2} s, de 12 s); alto (-6 dB): {gAlto:F1} dB; explosão +20 dB: pico entra {pIn:F2}, sai {pOut:F2} (ganho antes {gAntes:F1} dB, depois {nv3.GanhoDb:F1}); desligado intacto {z.SequenceEqual(z0)}, volta intacto após o fade {w.SequenceEqual(w0)}; liga/desliga sem clique {semClique} (salto {passoOut:F3} vs seno {passoIn:F3})");
+}
+
 // 12. UI state -> effects. Estéreo+ (04/11): profile -> engine core; card switch = Estéreo+ only; crossfeed/reverb follow the EQ switch; crossfeed paused while Estéreo+ on
 {
     var P = Fx.EstereoMais.Perfis;
@@ -1097,7 +1130,10 @@ const int T = 48000;
         ("VB-CABLE", [real, P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A)], a => a.Cabo is { Marca: "VB-CABLE", Loopback: false } c && c.Captar.Nome.StartsWith("CABLE Output")),
         ("VB-CABLE A", [P("CABLE-A Input", "VB-Audio Cable A", true, A), P("CABLE-A Output", "VB-Audio Cable A", false, A)], a => a.Cabo?.Captar.Nome.StartsWith("CABLE-A Output") == true),
         ("Voicemeeter = loopback", [P("Voicemeeter Out B1", VM, false, A), P("Voicemeeter Input", VM, true, A)], a => a.Cabo is { Marca: "Voicemeeter", Loopback: true } c && c.Captar.Nome.StartsWith("Voicemeeter Input")),
-        ("VAC antes do VB", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.Cabo?.Vac == true),
+        ("VAC antes do VB", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("Line 1", VAC, true, A), P("Line 1", VAC, false, A), P("Line 2", VAC, true, A), P("Line 2", VAC, false, A)], a => a.Cabo?.Vac == true),
+        ("VAC Lite + VB: som no VB (06/11)", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.Cabo?.Marca == "VB-CABLE"),
+        ("16ch do VB ignorado (06/11)", [P("CABLE In 16ch", VB, true, A), P("CABLE Output", VB, false, A)], a => a.Estado == "falta"),
+        ("16ch desligado não entra no aviso", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("CABLE In 16ch", VB, true, D)], a => a.Estado == "achou" && a.Cabo!.Tocar.Nome.StartsWith("CABLE Input")),
         ("VB desativado", [real, P("CABLE Input", VB, true, D), P("CABLE Output", VB, false, D)], a => a.Estado == "desativado" && a.Marca == "VB-CABLE" && a.Desativados.Length == 2 && a.Desativados[0].StartsWith("CABLE Input")),
         ("meio desativado", [P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, D)], a => a.Estado == "desativado" && a.Desativados.Single().StartsWith("CABLE Output")),
         ("VAC só com a Saída da Line 1 (04/11)", [P("Line 1", VAC, true, A), P("Line 2", VAC, true, D), P("Line 1", VAC, false, D), P("Line 2", VAC, false, D), P("Mic 1", VAC, false, NAudio.CoreAudioApi.DeviceState.Unplugged), P("S/PDIF 1", VAC, false, NAudio.CoreAudioApi.DeviceState.Unplugged)], a => a.Estado == "desativado" && a.Desativados.Single() == "Line 1 na seção Entrada"),
@@ -1111,11 +1147,31 @@ const int T = 48000;
         ("cabo inteiro: nada a ligar", [P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.Estado == "achou" && a.Ligar == null),
         ("desativado + outro ativo", [P("CABLE Input", VB, true, D), P("CABLE Output", VB, false, D), P("Voicemeeter Input", VM, true, A)], a => a.Estado == "achou" && a.Cabo!.Marca == "Voicemeeter"),
         ("sem cabo", [real], a => a.Estado == "falta"),
+        ("dois lados desligados: ids dos dois (05/11)", [P("Line 1", VAC, true, D), P("Line 1", VAC, false, D)], a => a.DesativadosIds.SequenceEqual([P("Line 1", VAC, true, D).Id, P("Line 1", VAC, false, D).Id])),
+        ("VAC todo desativado: só ids da Line 1", [P("Line 2", VAC, true, D), P("Line 1", VAC, true, D), P("Line 1", VAC, false, D), P("Line 2", VAC, false, D)], a => a.DesativadosIds.SequenceEqual([P("Line 1", VAC, true, D).Id, P("Line 1", VAC, false, D).Id])),
+        ("cabo inteiro: sem ids", [P("Line 1", VAC, true, A), P("Line 1", VAC, false, A)], a => a.DesativadosIds.Length == 0),
+        ("instalador: arm64 só se o pacote tem", [real], _ => Cabos.ExeInstalador(System.Runtime.InteropServices.Architecture.Arm64, n => n.Contains("arm64")) == "VBCABLE_Setup_arm64.exe"
+            && Cabos.ExeInstalador(System.Runtime.InteropServices.Architecture.Arm64, _ => false) == "VBCABLE_Setup_x64.exe" && Cabos.ExeInstalador(System.Runtime.InteropServices.Architecture.X64, _ => true) == "VBCABLE_Setup_x64.exe"),
     ];
     var ruins = casos.Where(c => { try { return !c.Item3(Cabos.Escolher(c.Item2)); } catch { return true; } }).Select(c => c.Item1).ToList();
     Ok("cabo achado pelo driver", ruins.Count == 0, ruins.Count == 0 ? $"{casos.Length} casos" : "falhou: " + string.Join(", ", ruins));
+    // read-only on the real PC: simulation flag stops Detectar from hiding endpoints
+    var simAntes = Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO"); Environment.SetEnvironmentVariable("FAH_SIMULAR_PADRAO", simAntes ?? "teste");
     Cabos.Teste = _ => false; var sv = Cabos.Detectar(); Cabos.Teste = null;
     var pc = Cabos.Detectar();
+    Environment.SetEnvironmentVariable("FAH_SIMULAR_PADRAO", simAntes);
+    // mic pair: VAC Lite line becomes the mic when Som is on another family; full VAC keeps Line 2; 16ch never used
+    {
+        var lite = new List<Cabos.Ponta> { P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A), P("CABLE In 16ch", VB, true, A), P("Line 1", VAC, true, A), P("Line 1", VAC, false, A) };
+        var somL = Cabos.Escolher(lite).Cabo; var micL = Cabos.EscolherMic(lite, somL).Cabo;
+        var cheio = new List<Cabos.Ponta> { P("Line 1", VAC, true, A), P("Line 1", VAC, false, A), P("Line 2", VAC, true, A), P("Line 2", VAC, false, A), P("CABLE Input", VB, true, A), P("CABLE Output", VB, false, A) };
+        var somC = Cabos.Escolher(cheio).Cabo; var micC = Cabos.EscolherMic(cheio, somC).Cabo;
+        var so16 = new List<Cabos.Ponta> { P("Line 1", VAC, true, A), P("Line 1", VAC, false, A), P("CABLE In 16ch", VB, true, A), P("CABLE Output", VB, false, A) };
+        var mic16 = Cabos.EscolherMic(so16, Cabos.Escolher(so16).Cabo);
+        Ok("cabo do mic: Lite vira mic, VAC cheio usa Line 2, 16ch nunca",
+            somL?.Marca == "VB-CABLE" && micL?.Vac == true && micL.Tocar.Nome.StartsWith("Line 1") && somC?.Vac == true && micC?.Tocar.Nome.StartsWith("Line 2") == true && mic16.Estado == "falta",
+            $"lite: {somL?.Tocar.Nome} / {micL?.Tocar.Nome}; cheio: {somC?.Tocar.Nome} / {micC?.Tocar.Nome}; 16ch: {mic16.Estado}");
+    }
     Ok("cabo: serviço parado avisa, PC real responde", sv.Estado == "servico" && pc.Estado != "servico", $"parado -> {sv.Estado}; este PC -> {pc.Estado} {pc.Cabo?.Tocar.Nome} -> {pc.Cabo?.Captar.Nome}");
     // "Verificar de novo" changes only what depends on the cable: (tinha, novo, som ligado, som em, mic em, falta mic) -> plano
     (string, Cabos.PlanoCabo, Cabos.PlanoCabo)[] planos =
@@ -1129,6 +1185,19 @@ const int T = 48000;
         ("cabo sumiu: só avisa", Cabos.Replanejar(true, null, true, "a", "b", false), default),
         ("segundo cabo instalado: só o mic liga", Cabos.Replanejar(true, "a", true, "a", null, true), new(false, false, false, true)),
     ];
+    var msgs = new[]
+    {
+        Cabos.EstadoParaUi("falta", false, false, null) == ("falta", null),
+        Cabos.EstadoParaUi("falta", false, true, "x") == ("reiniciar", "x"),
+        Cabos.EstadoParaUi("falta", false, false, "x") == ("falta", "x"),
+        Cabos.EstadoParaUi("achou", false, true, "x") == ("achou", null),
+        Cabos.EstadoParaUi("desativado", false, false, "x") == ("desativado", null),
+        Cabos.EstadoParaUi("falta", true, true, "x") == ("instalando", null),
+        Cabos.AssinanteVbAudio("CN=VB-Audio Software, O=VB-Audio Software, C=FR"),
+        Cabos.AssinanteVbAudio("CN=BUREL VINCENT Entrepreneur individuel, O=BUREL VINCENT Entrepreneur individuel, STREET=21 avenue des Marguerites, L=Eymet, C=FR"),
+        !Cabos.AssinanteVbAudio("CN=Outra Empresa") && !Cabos.AssinanteVbAudio(null) && !Cabos.AssinanteVbAudio("CN=Golpe, O=VB-Audio"),
+    };
+    Ok("cabo: mensagem de estado e assinatura do instalador", msgs.All(x => x), string.Concat(msgs.Select(x => x ? "1" : "0")));
     var erradosP = planos.Where(p => p.Item2 != p.Item3).Select(p => p.Item1).ToList();
     Ok("verificar cabo muda só o que depende dele", erradosP.Count == 0, erradosP.Count == 0 ? $"{planos.Length} casos" : "falhou: " + string.Join(", ", erradosP));
 }

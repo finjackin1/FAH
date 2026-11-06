@@ -46,6 +46,7 @@ sealed partial class Motor
             if (!religar && guardaMic.Devolver()) Log("microfone padrão do Windows devolvido (a última sessão caiu)");
             var som = Cabo?.Cabo ?? ConferirCabo().Cabo;
             var ach = Cabos.DetectarMic(som);
+            micPodeLite = ach.PodeLite;
             if (ach.Cabo is not { } cb) { semCaboMic = true; return FalhaMic(SemSegundoCabo(som)); }
             semCaboMic = false;
             var reais = Aparelhos.Listar(false).Where(a => !a.Virtual).ToList();
@@ -101,7 +102,15 @@ sealed partial class Motor
     /// <summary>Mic switch greyed for lack of a 2nd cable (re-checked when the Som cable is checked again).</summary>
     public bool SemCaboMic => semCaboMic && !MicLigado;
 
-    static string SemSegundoCabo(Cabo? som) => som switch
+    /// <summary>No VAC at all and a Som cable: FAH can install VAC Lite for the mic (button in the mic notice).</summary>
+    public bool PodeInstalarMic => SemCaboMic && micPodeLite && Cabo?.Cabo != null;
+    volatile bool micPodeLite;
+
+    string SemSegundoCabo(Cabo? som) => som != null && micPodeLite
+        ? "Falta um cabo virtual para o microfone. Clique em Instalar cabo do microfone: o FAH baixa o Virtual Audio Cable Lite, que é grátis."
+        : SemSegundoFixo(som);
+
+    static string SemSegundoFixo(Cabo? som) => som switch
     {
         { Vac: true } c when Surround71.Lite(c.Tocar.Nome) => "O Virtual Audio Cable Lite tem um cabo só, e ele já leva o som do PC. Para o microfone, instale o VB-CABLE A (VB-Audio) ou a versão completa do Virtual Audio Cable.",
         { Vac: true } when !Surround71.TemApi() => "Falta um segundo cabo para o microfone. Na versão completa do Virtual Audio Cable, mude Cables para 2 no painel. A versão Lite tem um cabo só: instale o VB-CABLE A (VB-Audio).",
@@ -144,7 +153,7 @@ sealed partial class Motor
         lock (trava)
         {
             if (fluxoMic != null || encerrando) return;
-            var cb = Cabos.DetectarMic(Cabo?.Cabo).Cabo;
+            var achM = Cabos.DetectarMic(Cabo?.Cabo); var cb = achM.Cabo; micPodeLite = achM.PodeLite;
             if (cb == null) { semCaboMic = true; FalhaMic(SemSegundoCabo(Cabo?.Cabo)); return; }
             semCaboMic = false;
             try
@@ -167,7 +176,7 @@ sealed partial class Motor
 
     public void StatusMic() => Enviar("mic", new
     {
-        ligado = MicLigado, erro = ErroMic, semCabo = SemCaboMic, entrada = fluxoMic?.NomeReal, saida = caboMic?.Captar.Nome, ouvir = leitorOuvir != null, ouvirSai = fluxoSai != null, injeta = Injetados(),
+        ligado = MicLigado, erro = SemCaboMic ? instalaMicErro ?? ErroMic : ErroMic, semCabo = SemCaboMic, podeInstalar = PodeInstalarMic && !InstalandoCabo, instalaErro = SemCaboMic ? instalaMicErro : null, entrada = fluxoMic?.NomeReal, saida = caboMic?.Captar.Nome, ouvir = leitorOuvir != null, ouvirSai = fluxoSai != null, injeta = Injetados(),
         uso = Math.Round(fluxoMic?.UsoPct ?? 0, 1),
     });
 

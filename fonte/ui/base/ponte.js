@@ -7,13 +7,14 @@
   if (window.FAH_SALVO) Object.assign(App.estado, window.FAH_SALVO);
   App.motor = { conectado: !!wv, enviar: (m) => wv && wv.postMessage(m) };
   if (!wv) return;                                  // plain browser (prototype tests): nothing else
-  const ultimo = {};
+  const ultimo = {}; let ultMicInst = null;
   setInterval(() => VIGIA.forEach((k) => { const v = App.estado[k]; if (v === undefined) return;
     const j = JSON.stringify(v); if (j !== ultimo[k]) { ultimo[k] = j; wv.postMessage({ tipo: 'estado', chave: k, valor: v }); } }), 40);
   wv.addEventListener('message', (e) => { const { tipo, dados } = e.data || {}; if (!tipo) return;
     App.estado[tipo] = dados; dispatchEvent(new CustomEvent('fah:' + tipo, { detail: dados }));
     if (tipo === 'motor') aviso(dados);
-    else if (tipo === 'mic') aviso(dados && dados.semCabo ? {} : dados, 'mic', 88, 'micligar');   // missing 2nd cable = greyed mic switch, not an error
+    else if (tipo === 'mic') { aviso(dados && dados.semCabo ? {} : dados, 'mic', 88, 'micligar');   // missing 2nd cable = greyed mic switch, not an error
+      const ie = dados && dados.instalaErro; if (ie && ie !== ultMicInst && App.toast) App.toast(ie, 8000); ultMicInst = ie || null; }   // mic cable install failed: once per new error
     else if (tipo === 'aviso' && dados && dados.texto) { if (dados.tipo === 'erro') aviso({ erro: dados.texto }); else if (App.toast) App.toast(dados.texto, 5000); } });
   // engine problem = one line at the top (plain sentence, no code); one line per source (motor / mic), click = that source's retry
   const aviso = (m, id = 'motor', topo = 50, retry = 'ligar') => { let el = document.getElementById('aviso-' + id);

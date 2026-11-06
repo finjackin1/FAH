@@ -94,7 +94,7 @@ sealed class Janela : Form
                 await Task.Delay(TimeSpan.FromHours(1));
             }
         });
-        Task.Delay(20000).ContinueWith(_ =>
+        Task.Delay(3000).ContinueWith(_ =>
         {
             try { BeginInvoke(() => { if (cfg.AutoAtualizar && Atualizador.EhExeDeVerdade()) _ = Procurar(true); }); } catch { }
         });
@@ -296,7 +296,26 @@ sealed class Janela : Form
             if (pasta == null) { Att("erro", info.Version, 0, e2); return; }
             pastaPronta = pasta; versaoPronta = info.Version;
             Att("pronta", info.Version);
-            if (auto) Mandar("aviso", new { texto = $"A versão {info.Version} do FAH está pronta. Instale em Configurações > Sobre." });
+            if (auto)                                     // 05/11 user: at start, update installs on its own (FAH reopens, sound back in a few s)
+            {
+                string arqTag = Path.Combine(Base.Config, "att-tentada.txt");
+                string? tentada = null; try { tentada = File.ReadAllText(arqTag).Trim(); } catch { }
+                bool parado = !motor.Ligado && !motor.MicLigado && !motor.InstalandoCabo;   // never cut a VB-CABLE install
+                if (!parado || tentada == info.Version)   // sound running, or this version was already tried on its own: user installs by the button
+                {
+                    Mandar("aviso", new { texto = $"A versão {info.Version} do FAH está pronta. Toque em Instalar quando quiser." });
+                    return;
+                }
+                Mandar("aviso", new { texto = $"Instalando a versão {info.Version} do FAH. Ele reabre sozinho em alguns segundos." });
+                await Task.Delay(2500);
+                if (motor.Ligado || motor.MicLigado || motor.InstalandoCabo)       // sound came on (or cable install began) during the wait
+                {
+                    Mandar("aviso", new { texto = $"A versão {info.Version} do FAH está pronta. Toque em Instalar quando quiser." });
+                    return;
+                }
+                try { File.WriteAllText(arqTag, info.Version); } catch { }
+                Instalar();
+            }
         }
         catch (Exception e) { baixando = false; Base.Log("atualizar: " + e.Message); Att("erro", null, 0, "não consegui procurar atualização"); }
         finally { procurando = false; }
@@ -402,6 +421,8 @@ sealed class Janela : Form
                 case "mixfixar": mesa.Fixar(Txt(r, "lado"), Txt(r, "x"), Txt(r, "n"), r.TryGetProperty("id", out var fi) && fi.ValueKind == JsonValueKind.String ? fi.GetString() : null); break;
                 case "mixpadrao": { bool mic = Txt(r, "lado") == "mic"; string id = Txt(r, "id"); Task.Run(() => { motor.TrocarPadrao(mic, id); mesa.Fazer(() => { }); }); break; }
                 case "cabo?": Task.Run(motor.RefazerCabo); break;
+                case "cabo-instalar": Task.Run(motor.InstalarCabo); break;
+                case "cabo-mic-instalar": Task.Run(motor.InstalarCaboMic); break;
                 case "abrir": Abrir(Txt(r, "url")); break;
                 case "log": Base.Log("ui: " + r.GetProperty("texto").GetString()); break;
             }
@@ -410,7 +431,7 @@ sealed class Janela : Form
     }
 
     // cable veil: vendor sites and Windows sound settings only (never any URL from the page)
-    static readonly string[] Sites = ["https://vb-audio.com/", "https://vac.muzychenko.net/", "ms-settings:sound"];
+    static readonly string[] Sites = ["https://vb-audio.com/", "https://vac.muzychenko.net/", "ms-settings:sound", "https://github.com/finjackin1/FAH/releases"];
 
     static void Abrir(string url)
     {
