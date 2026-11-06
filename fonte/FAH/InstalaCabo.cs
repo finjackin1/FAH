@@ -146,7 +146,17 @@ sealed partial class Motor
                 Log("instala cabo: baixando " + url);
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));   // idle cap: renewed on every chunk (slow links still finish)
                 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(1) };
-                using var r = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token).GetAwaiter().GetResult();
+                HttpResponseMessage Pedir()   // right after logon the network may come up a few s late (seen in clean-PC test 06/11): retry ~25 s
+                {
+                    for (int tent = 0; ; tent++)
+                        try { return http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token).GetAwaiter().GetResult(); }
+                        catch (HttpRequestException e) when (e.StatusCode == null && tent < 5)
+                        {
+                            Log("instala cabo: rede ainda não respondeu (" + e.Message + "), tento de novo em 5 s");
+                            Thread.Sleep(5000); cts.CancelAfter(TimeSpan.FromMinutes(1));
+                        }
+                }
+                using var r = Pedir();
                 r.EnsureSuccessStatusCode();
                 long total = r.Content.Headers.ContentLength ?? -1, lido = 0; int ult = -1;
                 using var ent = r.Content.ReadAsStream(); escrevendo = true; using var sai = File.Create(zip); escrevendo = false;

@@ -34,6 +34,8 @@ sealed class Janela : Form
     bool micAntes;                                    // mic chain was on when the hotkey turned everything off
     string? resultadoAtt;                             // result of the last update (told once, after the page loaded)
     bool procurando, baixando;
+    int tentativasAuto;
+    static readonly int[] EsperasAuto = [30, 120, 600];
     string? pastaPronta, versaoPronta;
     object estadoAtt = new { estado = "em-dia", versao = (string?)null, pct = 0, erro = (string?)null };
 
@@ -280,7 +282,17 @@ sealed class Janela : Form
         {
             Att("procurando");
             var (info, erro) = await Task.Run(Atualizador.UltimaAsync);
-            if (info == null) { Att("erro", null, 0, erro); return; }
+            if (info == null)
+            {
+                Att("erro", null, 0, erro);
+                if (auto && tentativasAuto < EsperasAuto.Length)   // started with Windows: network often not up yet at +3 s (clean-PC test 06/11)
+                {
+                    int s = EsperasAuto[tentativasAuto++];
+                    Base.Log($"atualizar: tento de novo em {s} s");
+                    _ = Task.Delay(s * 1000).ContinueWith(_ => { try { BeginInvoke(() => { if (cfg.AutoAtualizar) _ = Procurar(true); }); } catch { } });
+                }
+                return;
+            }
             if (!Atualizador.EhMaisNova(info.Version)) { Att("em-dia", info.Version); return; }
             if (info.ZipUrl == null) { Att("erro", info.Version, 0, "a versão " + info.Version + " não tem o arquivo para Windows"); return; }
             int ult = -1; baixando = true; Att("baixando", info.Version);
