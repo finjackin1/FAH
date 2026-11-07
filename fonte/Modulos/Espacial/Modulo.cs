@@ -123,14 +123,51 @@ public sealed class Modulo : IModulo
         ? x.ValueKind == JsonValueKind.True || (x.ValueKind == JsonValueKind.Number && x.GetDouble() != 0) : pad;
     static double Num(JsonElement o, string k, double pad) => o.TryGetProperty(k, out var x) && x.ValueKind == JsonValueKind.Number ? x.GetDouble() : pad;
 
+    // 07/11 user: "faça esse sistema de virar as caixas pra fora no 7.1 também pra ver como fica" -> Estéreo+ v5 re-pan (Palco.cs, linked
+    // from Efeitos) before the virtual speakers: stereo = both channels before the upmix; 7.1 cable = front pair, other 6 delayed to match.
+    // Experiment: PalcoAberto = false brings back the approved 7.1 exactly.
+    public const bool PalcoAberto = true;
+    const double PalcoAbre = 0.60;              // same as Estéreo+ Música
+
     sealed class Efeito(Motor m) : IEfeitoMulticanal
     {
+        FAH.Efeitos.Palco? palco; bool tinha;
+        float[] buf = [], par = [];
+        readonly float[][] atraso = Enumerable.Range(0, 6).Select(_ => new float[1024]).ToArray();
+        int ap;
         public string Id => "som71";
         public Lado Lado => Lado.Som;
         public int Posicao => 10;
         public bool QuerMulticanal => m.Ativo;
-        public void Preparar(int taxa) { }
-        public void Processar(Span<float> lr, int quadros) => m.Processar(lr, 2, lr, quadros);
-        public void ProcessarMulticanal(ReadOnlySpan<float> src, Span<float> lr, int quadros) => m.Processar(src, 8, lr, quadros);
+        public void Preparar(int taxa) { palco = PalcoAberto ? new FAH.Efeitos.Palco(PalcoAbre, taxa) : null; tinha = false; }
+
+        bool UsaPalco()
+        {
+            bool usa = palco != null && m.Ativo;
+            if (usa && !tinha) { palco!.Limpar(); foreach (var a in atraso) Array.Clear(a); ap = 0; }
+            tinha = usa; return usa;
+        }
+
+        public void Processar(Span<float> lr, int quadros)
+        {
+            if (UsaPalco()) palco!.Processar(lr, quadros);
+            m.Processar(lr, 2, lr, quadros);
+        }
+
+        public void ProcessarMulticanal(ReadOnlySpan<float> src, Span<float> lr, int quadros)
+        {
+            if (!UsaPalco()) { m.Processar(src, 8, lr, quadros); return; }
+            if (buf.Length < quadros * 8) { buf = new float[quadros * 8]; par = new float[quadros * 2]; }
+            for (int i = 0; i < quadros; i++)
+            {
+                par[2 * i] = src[8 * i]; par[2 * i + 1] = src[8 * i + 1];
+                int p = (ap + i) & 1023;
+                for (int c = 0; c < 6; c++) { buf[8 * i + 2 + c] = atraso[c][p]; atraso[c][p] = src[8 * i + 2 + c]; }
+            }
+            ap = (ap + quadros) & 1023;
+            palco!.Processar(par.AsSpan(0, quadros * 2), quadros);
+            for (int i = 0; i < quadros; i++) { buf[8 * i] = par[2 * i]; buf[8 * i + 1] = par[2 * i + 1]; }
+            m.Processar(buf.AsSpan(0, quadros * 8), 8, lr, quadros);
+        }
     }
 }

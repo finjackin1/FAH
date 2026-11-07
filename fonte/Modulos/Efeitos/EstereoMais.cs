@@ -1,4 +1,4 @@
-// Estéreo+ v4 (05/11/2026): out of the head like the phone's Dolby. User: "voz fica exatamente onde tá", treble/bass "no nível", no echo,
+﻿// Estéreo+ v4 (05/11/2026): out of the head like the phone's Dolby. User: "voz fica exatamente onde tá", treble/bass "no nível", no echo,
 // "parece que o áudio sai um pouco da cabeça", missing = "espacialidade". All time domain, zero latency.
 //   m = (L+R)/2 untouched (centre bit-exact: voice never moves)
 //   s = (L-R)/2 -> head cue: u = s - g*Sombra(s delayed by Itd)   (each side leaks to the other ear late and shadowed, like a real head)
@@ -11,8 +11,8 @@
 namespace FAH.Efeitos;
 
 /// <summary>Itd = interaural delay ms (bigger = speakers further out), Cruza = leak to the other ear (0..0.9), Sombra = head-shadow Hz,
-/// Largura = side gain above Corte (1 = as recorded).</summary>
-public sealed record PerfilEstereo(double Itd, double Cruza, double Sombra, double Largura, double Corte);
+/// Largura = side gain above Corte (1 = as recorded), Abre = re-pan exponent (1 = off, smaller = sounds further apart; see Palco.cs).</summary>
+public sealed record PerfilEstereo(double Itd, double Cruza, double Sombra, double Largura, double Corte, double Abre = 1);
 
 public sealed class EstereoMais
 {
@@ -20,9 +20,9 @@ public sealed class EstereoMais
     {
         // 05/11 user: "deixe as caixas no lugar e explore a espacialidade 3d de um alto-falante até o outro, muito maior"
         // analytic search (05/11): side never below recorded, peak <= ~2 dB over Largura, other ear at 400 Hz -10..-13 dB. Physics limit: centre fixed + flat side = only moderate crossfeed
-        ["jogo"] = new(0.30, 0.50, 300, 1.25, 100),   // precise: speakers just outside the ears
-        ["musica"] = new(0.45, 0.60, 300, 1.35, 500),
-        ["filme"] = new(0.60, 0.40, 300, 1.50, 300),  // biggest
+        ["jogo"] = new(0.30, 0.50, 300, 1.00, 100, 0.70),     // v5: widening moved to Palco (no out-of-phase leak)   // precise: speakers just outside the ears
+        ["musica"] = new(0.45, 0.60, 300, 1.00, 500, 0.60),
+        ["filme"] = new(0.60, 0.40, 300, 1.15, 300, 0.55),  // biggest
     };
 
     readonly CompensaVolume comp = new() { Fracao = 0.5 };
@@ -107,6 +107,7 @@ public sealed class Nucleo
     readonly double g, bS, bR, gb, kLarg, hpA;
     readonly double[] atraso; int ap;
     double sombraU, sombraV, hpX, hpY;
+    readonly Palco? palco;
 
     public Nucleo(string chave, PerfilEstereo p, int taxa)
     {
@@ -116,9 +117,10 @@ public sealed class Nucleo
         bR = bS; gb = g * bR;
         kLarg = p.Largura - 1; hpA = 1 / (1 + 2 * Math.PI * p.Corte / taxa);
         atraso = new double[Math.Max(1, (int)Math.Round(p.Itd * taxa / 1000))];
+        if (p.Abre < 1) palco = new Palco(p.Abre, taxa);
     }
 
-    public void Limpar() { sombraU = sombraV = hpX = hpY = 0; Array.Clear(atraso); ap = 0; }
+    public void Limpar() { sombraU = sombraV = hpX = hpY = 0; Array.Clear(atraso); ap = 0; palco?.Limpar(); }
 
     public void Processar(ReadOnlySpan<float> e, float[] o, int n)
     {

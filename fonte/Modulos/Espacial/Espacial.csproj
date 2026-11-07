@@ -12,6 +12,8 @@
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <!-- MIT KEMAR HRIRs (public); + SADIE II real heads (York, Apache 2.0, ferramentas\sadie_para_npz.py) -->
     <EmbeddedResource Include="dados\hrtf_*.npz" LogicalName="%(Filename)%(Extension)" />
+    <!-- 07/11: Estéreo+ re-pan reused by Som 7.1 (modules don't reference each other: source linked) -->
+    <Compile Include="..\Efeitos\Palco.cs" Link="Palco.cs" />
   </ItemGroup>
   <!-- module .dll goes to the host's modulos\ folder -->
   <Target Name="CopiaParaHost" AfterTargets="Build">

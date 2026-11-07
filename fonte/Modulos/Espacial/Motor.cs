@@ -1,4 +1,4 @@
-// Som 7.1 engine (port of espacial.py MotorEspacial): stereo or 7.1 in -> binaural stereo out, fixed delay of one
+﻿// Som 7.1 engine (port of espacial.py MotorEspacial): stereo or 7.1 in -> binaural stereo out, fixed delay of one
 // block (512) plus the upmix hop for stereo. Settings are built off the audio thread (Ajustes) and picked up per block;
 // a new set fades in over 200 ms (no click), switching on/off ramps over 50 ms.
 namespace FAH.Espacial;
@@ -184,7 +184,8 @@ public sealed class Motor
         if (modo71 != m71) { modo71 = m71; upmix = new(); preencher = new(); Array.Clear(linhaSub); vivos.Clear(); vivos.Add(NovoVivo(ped, null)); }
         else if (vivos.Count == 1 && vivos[0].A != ped) vivos.Add(NovoVivo(ped, vivos[0]));
 
-        if (Voz != (dialogo != null)) { dialogo = Voz ? new Biquads(Realce, 1) : null; dialogoSala = Voz ? new Biquads(RealceInv, 1) : null; }
+        bool voz = Voz && !Brir.Neutro;
+        if (voz != (dialogo != null)) { dialogo = voz ? new Biquads(Realce, 1) : null; dialogoSala = voz ? new Biquads(RealceInv, 1) : null; }
 
         if (m71)
         {
@@ -209,7 +210,7 @@ public sealed class Motor
             upmix.Bloco(el, er, x);
             // "Graves no subwoofer" on stereo (28/10): no LFE channel, so the low end of the mid feeds both ears straight
             // (no HRTF/room), two blocks late = in step with the upmix + convolution (measured: 1 block = -2 dB at 50 Hz)
-            double gs = Sub ? 0.25 * GanhoLfe : 0;
+            double gs = Sub && !Brir.Neutro ? 0.25 * GanhoLfe : 0;
             for (int i = 0; i < B; i++) lfe[i] = 0.5 * (el[i] + er[i]);
             lfeLp.Processar(lfe, 0, B);
             AtrasarSub(gs, 2 * B + Brir.AjusteSub);

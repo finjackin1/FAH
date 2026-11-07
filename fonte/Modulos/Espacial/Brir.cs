@@ -1,4 +1,4 @@
-// Virtual speakers: HRTF (MIT KEMAR, or a SADIE II head he picks: Ouvidos) + room (approved 14-20/10/2026).
+﻿// Virtual speakers: HRTF (MIT KEMAR, or a SADIE II head he picks: Ouvidos) + room (approved 14-20/10/2026).
 // Each speaker = direct HRIR of its direction (diffuse-field EQ, speaker-set EQ, front/back cues) + ONE shared room
 // reverb (mono sum -> stereo room FIR), drr dB under the direct, whole response at energy 1.
 using System.IO.Compression;
@@ -28,6 +28,12 @@ public static partial class Brir
     /// <summary>PbEco/PbCauda = low-pass (Hz) of the wall reflections / the diffuse noise tail. EcoDb > 0 = each speaker has its own reflections
     /// (through the HRTF, EcoDb under the direct); only the tail is shared. 0 = all in the shared room.</summary>
     public sealed record Sala(string Nome, double W, double D, double H, double Refl, double Rt60, double Drr, double PreMs, double PbEco = 6000, double PbCauda = 4500, double EcoDb = 0);
+    /// <summary>07/11 user: "ainda tem eco no 7.1, isso não" -> no room at all (no reflections, no tail), like Estéreo+. false = approved room back.</summary>
+    public static bool SemEco = true;
+    /// <summary>07/11 user chose "EQ neutra": raw HRIR per speaker (no set EQ, cues, contrast, centered-voice fix, reflections, room, colors),
+    /// then ONE min-phase EQ that flattens the layout average (|HL|²+|HR|²) to 0 dB. Motor: voice boost and stereo sub off. false = previous chain.
+    /// (The tiny "pertinho" room tried before it was reverted: "eq bizarra".)</summary>
+    public static bool Neutro = true;
     public static readonly Sala[] Salas =
     [
         // 01/11: Música (4 x 3.6 m, RT60 0.18) = "bolha", space reached a point then cut off → same fix as 29/10 media:
@@ -451,6 +457,7 @@ public static partial class Brir
     /// <summary>All speakers of a layout as the engine uses them: [speaker][ear][LDCaixa], energy 1 together with the room, + room gain per speaker.</summary>
     public static (double[][][] Resp, double[] Peso) Caixas(double[] angulos, bool modo71, int sala)
     {
+        if (Neutro) return (CaixasNeutras(angulos), new double[angulos.Length]);
         var s = Salas[sala]; int n = angulos.Length;
         var d = new double[n][][]; var peso = new double[n];
         for (int c = 0; c < n; c++) d[c] = Direto(angulos[c], modo71);
@@ -463,10 +470,10 @@ public static partial class Brir
         {
             double ed = Energia(d[c][0]) + Energia(d[c][1]);
             // shared part = tail only, -20 dB (as in the old room, Drr + 3). Own reflections at -20 dB: total room -17 dB, as approved
-            double k = Math.Sqrt(ed) * Math.Pow(10, -(s.Drr + (s.EcoDb > 0 ? 3 : 0)) / 20);
+            double k = SemEco ? 0 : Math.Sqrt(ed) * Math.Pow(10, -(s.Drr + (s.EcoDb > 0 ? 3 : 0)) / 20);
             double[][] t = [new double[LDCaixa], new double[LDCaixa]];
             for (int e = 0; e < 2; e++) Array.Copy(d[c][e], t[e], LD);
-            if (s.EcoDb > 0) { var ec = Ecos(angulos[c], s, ed); for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa; i++) t[e][i] += ec[e][i]; }
+            if (s.EcoDb > 0 && !SemEco) { var ec = Ecos(angulos[c], s, ed); for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa; i++) t[e][i] += ec[e][i]; }
             double et = Energia(t[0]) + Energia(t[1]), cruz = 0;
             for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa && i < rev[e].Length; i++) cruz += t[e][i] * rev[e][i];
             double norma = Math.Sqrt(et + k * k + 2 * k * cruz);
@@ -481,13 +488,37 @@ public static partial class Brir
         return (d, peso);
     }
 
+    /// <summary>Neutral mode: raw HRIRs [speaker][ear][LDCaixa] through one EQ that makes the average over speakers of |HL|²+|HR|² flat at 0 dB.</summary>
+    static double[][][] CaixasNeutras(double[] angulos)
+    {
+        int n = angulos.Length;
+        var d = new double[n][][];
+        var p = new double[KF];
+        for (int c = 0; c < n; c++)
+        {
+            var h = Resposta(angulos[c]);
+            d[c] = new double[2][];
+            for (int e = 0; e < 2; e++) { d[c][e] = new double[LDCaixa]; Array.Copy(h[e], d[c][e], Math.Min(LDCaixa, h[e].Length)); }
+            var pe = Potencia(h, false);
+            for (int k = 0; k < KF; k++) p[k] += pe[k] / n;
+        }
+        var liso = Suavizar(p, 1.0 / 6);                           // 1/3 octave
+        var g = new double[KF];
+        for (int k = 0; k < KF; k++) g[k] = Math.Clamp(-10 * Math.Log10(Math.Max(liso[k], 1e-12)), -15, 15);
+        double g60 = g[Bin(60)], g18 = g[Bin(18000)];
+        for (int k = 0; k < KF; k++) { if (Fk(k) < 60) g[k] = g60; if (Fk(k) > 18000) g[k] = g18; }
+        var fir = FirFaseMinima(g);
+        foreach (var h in d) foreach (var x in h) Aplicar(x, fir);
+        return d;
+    }
+
     /// <summary>Direct part of one speaker (HRIR + set EQ + cues), [ear][LD], and its room gain k (reverb = k·rev):
     /// full response = (direct + k·rev) / norma, energy 1. Without contrast or own reflections (Caixas has them).</summary>
     public static (double[][] Direto, double K, double Norma) Caixa(double azGraus, bool modo71, int sala)
     {
         var d = Direto(azGraus, modo71);
         var rev = ReverbDe(sala);
-        double ed = Energia(d[0]) + Energia(d[1]), k = Math.Sqrt(ed) * Math.Pow(10, -Salas[sala].Drr / 20), cruz = 0;
+        double ed = Energia(d[0]) + Energia(d[1]), k = SemEco ? 0 : Math.Sqrt(ed) * Math.Pow(10, -Salas[sala].Drr / 20), cruz = 0;
         for (int e = 0; e < 2; e++) for (int i = 0; i < LD && i < rev[e].Length; i++) cruz += d[e][i] * rev[e][i];
         return (d, k, Math.Sqrt(ed + k * k + 2 * k * cruz));
     }
@@ -495,6 +526,7 @@ public static partial class Brir
     /// <summary>Timbre correction + type voice as peak sections (energy-neutral in pink noise).</summary>
     public static double[][] Correcao(bool modo71, int tipo)
     {
+        if (Neutro) return [];
         double[][] presenca = [.. Cores.Where(c => c.Db != 0).Select(c => Biquads.Pico(c.Hz, c.Q, c.Db))];
         if (!CorrecaoLigada) return presenca;
         var db = (double[])(modo71 ? Corr71 : CorrEst)[tipo].Clone();
