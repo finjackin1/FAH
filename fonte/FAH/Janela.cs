@@ -266,6 +266,19 @@ sealed class Janela : Form
         }
     }
 
+    // 3D screen: pick a song to place around the head (the UI puts the path into state f3d.arq)
+    void EscolherAudio3D()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Escolher uma música para o som 3D",
+            Filter = "Áudio (*.mp3;*.wav;*.m4a;*.aac;*.flac;*.wma;*.ogg)|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.wma;*.ogg|Todos os arquivos (*.*)|*.*",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        Mandar("f3darq", new { arq = dlg.FileName, nome = Path.GetFileName(dlg.FileName) });
+    }
+
     // ---- updater
     void Att(string estado, string? versao = null, int pct = 0, string? erro = null)
     {
@@ -372,7 +385,7 @@ sealed class Janela : Form
         cw.Settings.AreDevToolsEnabled = Environment.GetEnvironmentVariable("FAH_DEVTOOLS") == "1";
         cw.SetVirtualHostNameToFolderMapping("fah.local", Base.Ui, CoreWebView2HostResourceAccessKind.Allow);
         // saved state goes in before any screen script runs (modules read App.estado when they register)
-        await cw.AddScriptToExecuteOnDocumentCreatedAsync("window.FAH_SALVO=" + JsonSerializer.Serialize(motor.Estado) + ";window.FAH_DISP=" + JsonSerializer.Serialize(Dispositivos()) + ";");
+        await cw.AddScriptToExecuteOnDocumentCreatedAsync("window.FAH_SALVO=" + JsonSerializer.Serialize(motor.Estado) + ";window.FAH_DEV=" + (Base.Dev ? "true" : "false") + ";window.FAH_ZERO=" + (Base.Zero ? "true" : "false") + ";window.FAH_DISP=" + JsonSerializer.Serialize(Dispositivos()) + ";");
         cw.WebMessageReceived += (_, e) => Recebeu(e.WebMessageAsJson);
         cw.NavigationCompleted += (_, _) => { pronto = true; Zoom(); Mandar("janela", new { max = WindowState == FormWindowState.Maximized, tam }); motor.Status(); motor.CaboStatus(); motor.PaginaPronta(); relogio.Start(); if (!micIniciado) { micIniciado = true; Task.Run(motor.MicInicio); } else motor.StatusMic();
             EnviarInfo();
@@ -401,6 +414,7 @@ sealed class Janela : Form
             {
                 case "estado": { string chave = r.GetProperty("chave").GetString()!; var valor = r.GetProperty("valor"); motor.Receber(chave, valor); if (chave == "cfg") AplicarCfg(valor); break; }
                 case "backup": Backup(Txt(r, "acao")); break;
+                case "f3darquivo": EscolherAudio3D(); break;
                 case "atualizar": { string ac = Txt(r, "acao"); if (ac == "procurar") _ = Procurar(false); else if (ac == "instalar") Instalar(); break; }
                 case "ligar": Task.Run(motor.Ligar); break;
                 case "cabo71": { bool on = r.GetProperty("on").GetBoolean(); Task.Run(() => motor.Cabo71(on)); break; }
@@ -436,6 +450,7 @@ sealed class Janela : Form
                 case "cabo-instalar": Task.Run(motor.InstalarCabo); break;
                 case "cabo-mic-instalar": Task.Run(motor.InstalarCaboMic); break;
                 case "abrir": Abrir(Txt(r, "url")); break;
+                case "zero": if (Base.Dev) Base.PorZero(r.GetProperty("on").GetBoolean()); break;
                 case "log": Base.Log("ui: " + r.GetProperty("texto").GetString()); break;
             }
         }

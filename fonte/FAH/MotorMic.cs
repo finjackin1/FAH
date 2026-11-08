@@ -44,6 +44,8 @@ sealed partial class Motor
             if (encerrando) return false;
             ErroMic = null;
             if (!religar && guardaMic.Devolver()) Log("microfone padrão do Windows devolvido (a última sessão caiu)");
+            micCaiu = false;
+            Desestacionar("mic");
             var som = Cabo?.Cabo ?? ConferirCabo().Cabo;
             var ach = Cabos.DetectarMic(som);
             micPodeLite = ach.PodeLite;
@@ -80,7 +82,8 @@ sealed partial class Motor
     {
         lock (trava)
         {
-            FecharMic(); guardaMic.Devolver();
+            micCaiu = false; var c = fluxoMic != null ? caboMic : null;
+            FecharMic(); guardaMic.Devolver(); Estacionar("mic", c);
             lock (tEstado) { estado[ChaveMic] = JsonSerializer.SerializeToElement(false); Base.GravarEstado(estado); }
         }
         Log("microfone desligado: o Windows voltou a usar o microfone direto");
@@ -132,7 +135,7 @@ sealed partial class Motor
     void PerdeuCaboMic(Destino d, Exception? ex)
     {
         Log("cabo do microfone perdeu o aparelho: " + (ex?.Message ?? "parou sozinho"));
-        Task.Run(() => { lock (trava) { if (destMic != d) return; FecharMic(); guardaMic.Devolver(); FalhaMic("O cabo virtual do microfone foi desconectado."); } });
+        Task.Run(() => { lock (trava) { if (destMic != d) return; FecharMic(); guardaMic.Devolver(); micCaiu = true; FalhaMic("O cabo virtual do microfone foi desconectado."); } });
     }
 
     /// <summary>Mixer "Padrão do Windows" on the mic side while the mic path is on: FAH records another real mic (Windows stays on the cable).</summary>

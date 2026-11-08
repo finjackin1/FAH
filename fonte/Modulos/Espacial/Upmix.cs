@@ -26,10 +26,14 @@ public sealed class Upmix
         Lateral(saida[3], saida[4], fila.Length - 2 * H - AtrasoTras, GTras, lpTras);
     }
 
+    readonly double[] cru = new double[H];
+
     void Lateral(double[] esq, double[] dir, int ini, double g, Biquads lp)
     {
-        for (int i = 0; i < H; i++) esq[i] = fila[ini + i] * g;
+        for (int i = 0; i < H; i++) cru[i] = esq[i] = fila[ini + i] * g;
         lp.Processar(esq, 0, H);
+        double m = Preencher.Mistura;                            // 08/11: treble back in by Mistura (every speaker full range)
+        if (m > 0) for (int i = 0; i < H; i++) esq[i] += m * (cru[i] - esq[i]);
         for (int i = 0; i < H; i++) dir[i] = -esq[i];
     }
 }
@@ -51,7 +55,17 @@ public sealed class Preencher
     const double Alisa = 0.02;                                   // energy tracking per block: ~500 ms, no sway (voice pauses move the center's share)
     public const int Segurar = 10 * 48000;
     // share of the moved part per band: what stays in front, side, back. In step, so it pans: few speakers per band, and in step they add up louder: sum of squares 0.72
-    static readonly (double F, double S, double T)[] Reparte = [(0.68, 0.51, 0.0), (0.47, 0.38, 0.60), (0.51, 0.0, 0.68)];
+    // 08/11: entry 0 = the band under 250 Hz (untouched at Mistura 0)
+    static readonly (double F, double S, double T)[] Reparte = [(1, 0, 0), (0.68, 0.51, 0.0), (0.47, 0.38, 0.60), (0.51, 0.0, 0.68)];
+    /// <summary>08/11 user: each speaker only had its own bands = "cara de equalizador"; a real speaker plays everything and leans on its range
+    /// (sub too). Mistura 0 = the approved split; 1 = every speaker the same share of every band. In between: each share blends toward the
+    /// even share in energy (sum of squares kept ~0.72), so the speaker's own band stays on top. Dev screen key mMistura.</summary>
+    public static volatile float Mistura = 0.35f;
+    static (double F, double S, double T) Parte(int k, double m)
+    {
+        var (f, s, t) = Reparte[k]; const double igual = 0.24;
+        return (Math.Sqrt((1 - m) * f * f + m * igual), Math.Sqrt((1 - m) * s * s + m * igual), Math.Sqrt((1 - m) * t * t + m * igual));
+    }
     /// <summary>Center speaker gain for what leaves the fronts: same voice level at the ear as FL + FR (h11, the fixed head). Timbre: full match up to
     /// 4 kHz (his approved voice), half above (those peaks and notches are what says "straight ahead").</summary>
     public const double GanhoCentro = 1.17;
@@ -91,9 +105,9 @@ public sealed class Preencher
     }
 
     readonly Biquads[] divL = new Biquads[NB], divR = new Biquads[NB];
-    readonly Banda[] bandas = [new(), new(), new()];
-    readonly double[][] bl = [new double[B], new double[B], new double[B]], br = [new double[B], new double[B], new double[B]];
-    readonly double[] resL = new double[B], resR = new double[B], grave = new double[B];
+    readonly Banda[] bandas = [new(), new(), new(), new()];
+    readonly double[][] bl = [new double[B], new double[B], new double[B], new double[B]], br = [new double[B], new double[B], new double[B], new double[B]];
+    readonly double[] resL = new double[B], resR = new double[B];
     readonly double[] sl = new double[B], sr = new double[B], tl = new double[B], tr = new double[B], fl = new double[B], fr = new double[B], cen = new double[B];
     int quieto = Segurar;
     double g;
@@ -123,31 +137,37 @@ public sealed class Preencher
         double g0 = g, g1 = quieto >= Segurar ? Math.Min(1, g + Subida) : 0;
         g = g1;
 
-        // complementary split: under 250 stays out, then each band = low-pass of what's left, the last one = the rest
+        // complementary split: band 0 = under 250 (08/11: moves too, by Mistura), then each band = low-pass of what's left, the last one = the rest
         Array.Copy(x[0], resL, B); Array.Copy(x[1], resR, B);
-        Array.Copy(resL, grave, B); divL[0].Processar(grave, 0, B); for (int i = 0; i < B; i++) resL[i] -= grave[i];
-        Array.Copy(resR, grave, B); divR[0].Processar(grave, 0, B); for (int i = 0; i < B; i++) resR[i] -= grave[i];
+        Array.Copy(resL, bl[0], B); divL[0].Processar(bl[0], 0, B); for (int i = 0; i < B; i++) resL[i] -= bl[0][i];
+        Array.Copy(resR, br[0], B); divR[0].Processar(br[0], 0, B); for (int i = 0; i < B; i++) resR[i] -= br[0][i];
         Array.Clear(sl); Array.Clear(sr); Array.Clear(tl); Array.Clear(tr); Array.Clear(fl); Array.Clear(fr); Array.Clear(cen);
-        for (int k = 0; k < NB; k++)
+        double m = Math.Clamp(Mistura, 0, 1);
+        for (int k = 0; k <= NB; k++)
         {
             double[] a = bl[k], b = br[k];
-            Array.Copy(resL, a, B); Array.Copy(resR, b, B);
-            if (k < NB - 1)
+            if (k > 0)
             {
-                divL[k + 1].Processar(a, 0, B); divR[k + 1].Processar(b, 0, B);
-                for (int i = 0; i < B; i++) { resL[i] -= a[i]; resR[i] -= b[i]; }
+                Array.Copy(resL, a, B); Array.Copy(resR, b, B);
+                if (k < NB)
+                {
+                    divL[k].Processar(a, 0, B); divR[k].Processar(b, 0, B);
+                    for (int i = 0; i < B; i++) { resL[i] -= a[i]; resR[i] -= b[i]; }
+                }
             }
             var t = bandas[k]; var (wl0, gl0, wr0, gr0, k0) = t.Agora();
             t.Medir(a, b);
+            if (k == 0 && m <= 0) continue;
             var (wl1, gl1, wr1, gr1, k1) = t.Agora();
-            var (pf, ps, pt) = Reparte[k];
+            var (pf, ps, pt) = Parte(k, m);
+            double mc = k == 0 ? m : 1;                               // low band: its shared part reaches the center by Mistura
             for (int i = 0; i < B; i++)
             {
                 double u = (i + 1.0) / B;
                 double el = (gl0 + (gl1 - gl0) * u) * (a[i] - (wl0 + (wl1 - wl0) * u) * b[i]);
                 double er = (gr0 + (gr1 - gr0) * u) * (b[i] - (wr0 + (wr1 - wr0) * u) * a[i]);
                 double vaz = (k0 + (k1 - k0) * u) * 0.5 * (el + er); el -= vaz; er -= vaz;
-                double meio = 0.5 * (a[i] - el + b[i] - er);          // what both share = center speaker
+                double meio = mc * 0.5 * (a[i] - el + b[i] - er);     // what both share = center speaker
                 cen[i] += meio;
                 fl[i] += el * (1 - pf) + meio; fr[i] += er * (1 - pf) + meio;
                 sl[i] += el * ps; sr[i] += er * ps; tl[i] += el * pt; tr[i] += er * pt;

@@ -43,6 +43,7 @@ sealed partial class Motor : IHost, IDisposable
         Task.Run(SincronizarBypass);                  // MTA: its device objects are used later from timer threads
         saude = new(_ => Saude(), null, 15000, 15000);
         VigiarPadrao();
+        VigiarCabos();
         VigiarChamadas();
     }
 
@@ -87,6 +88,7 @@ sealed partial class Motor : IHost, IDisposable
 
     void Entregar(string chave, JsonElement v)
     {
+        if (chave == "dev" && !Base.Dev) return;     // dev knobs only count in dev mode (a saved "dev" stays ignored otherwise)
         foreach (var m in Modulos) { try { if (m.Receber(chave, v)) return; } catch (Exception e) { Log($"{m.Id} {chave}: {e.Message}"); } }
     }
 
@@ -170,6 +172,8 @@ sealed partial class Motor : IHost, IDisposable
             if (encerrando) return false;
             Erro = null;
             if (!religar && guarda.Devolver()) Log("padrão do Windows devolvido (a última sessão caiu)");
+            caboCaiu = false;
+            Desestacionar("som");
             var ach = ConferirCabo();
             if (ach.Cabo is not { } cb) { Erro = null; Status(); return false; }   // the veil explains it (no extra error line)
             var cabo = cb.Tocar; string captar = cb.Captar.Nome;
@@ -362,7 +366,7 @@ sealed partial class Motor : IHost, IDisposable
 
     public void Desligar()
     {
-        lock (trava) { Fechar(); guarda.Devolver(); Status(); }
+        lock (trava) { caboCaiu = false; var c = fluxo != null ? Cabo?.Cabo : null; Fechar(); guarda.Devolver(); Status(); Estacionar("som", c); }
     }
 
     void Fechar()
@@ -432,6 +436,7 @@ sealed partial class Motor : IHost, IDisposable
             {
                 if (fluxo != f) return;
                 Fechar(); guarda.Devolver();
+                caboCaiu = true;                                      // the cable watcher retries once when it is usable again
                 if (ConferirCabo().Cabo != null) Falha("O cabo virtual do FAH parou de enviar som. Clique para tentar de novo.");
                 else { Erro = null; Status(); }                       // the veil explains it
             }

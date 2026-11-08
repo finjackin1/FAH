@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -15,6 +15,8 @@
     <Compile Include="..\Espacial\Conv.cs" Link="Conv.cs" />
     <Compile Include="..\Espacial\Upmix.cs" Link="Upmix.cs" />
     <Compile Include="..\Espacial\Intensidade.cs" Link="Intensidade.cs" />
+    <!-- 08/11 one spatial engine for 7.1 and Estéreo+ -->
+    <Compile Include="..\Espacial\Cena.cs" Link="Cena.cs" />
     <EmbeddedResource Include="..\Espacial\dados\hrtf_h11.npz" LogicalName="hrtf_h11.npz" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
   </ItemGroup>

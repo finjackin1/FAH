@@ -216,6 +216,34 @@ public static partial class Brir
         return a < 0 ? [(double[])h[1].Clone(), (double[])h[0].Clone()] : [(double[])h[0].Clone(), (double[])h[1].Clone()];
     }
 
+    /// <summary>08/11 3D screen (Fonte3D): smooth direction = the 3 nearest measured directions mixed by inverse angle (az + = right,
+    /// left = mirror). Moving the source then glides instead of jumping between measured points.</summary>
+    public static double[][] RespostaSuave(double azGraus, double elGraus = 0)
+    {
+        double a = ((azGraus + 180.0) % 360.0 + 360.0) % 360.0 - 180.0, lado = Math.Abs(a), el = Math.Clamp(elGraus, -40, 90);
+        double ta = lado * Math.PI / 180, te = el * Math.PI / 180;
+        var hs = hrir; var azs = az; var els = elev;
+        Span<int> im = [-1, -1, -1]; Span<double> cm = [-2, -2, -2];
+        for (int i = 0; i < azs.Length && i < hs.Length; i++)
+        {
+            double ra = azs[i] * Math.PI / 180, re = els[i] * Math.PI / 180;
+            double cd = Math.Sin(re) * Math.Sin(te) + Math.Cos(re) * Math.Cos(te) * Math.Cos(ra - ta);
+            for (int j = 0; j < 3; j++)
+                if (cd > cm[j]) { for (int q = 2; q > j; q--) { cm[q] = cm[q - 1]; im[q] = im[q - 1]; } cm[j] = cd; im[j] = i; break; }
+        }
+        int n = hs[im[0]][0].Length;
+        double[] l = new double[n], r = new double[n];
+        double soma = 0; Span<double> w = stackalloc double[3];
+        for (int j = 0; j < 3; j++) { if (im[j] < 0) continue; w[j] = 1 / Math.Max(Math.Acos(Math.Clamp(cm[j], -1, 1)), 1e-4); soma += w[j]; }
+        for (int j = 0; j < 3; j++)
+        {
+            if (im[j] < 0) continue;
+            var h = hs[im[j]]; double g = w[j] / soma;
+            for (int i = 0; i < n && i < h[0].Length; i++) { l[i] += g * h[0][i]; r[i] += g * h[1][i]; }
+        }
+        return a < 0 ? [r, l] : [l, r];
+    }
+
     // ---------------------------------------------------------------- EQ helpers (n = 1024)
     const int NF = 1024, KF = NF / 2 + 1;
     static double Fk(int k) => k * (double)Taxa / NF;
@@ -480,10 +508,11 @@ public static partial class Brir
         return [o[..n], o[n..]];
     }
 
-    /// <summary>All speakers of a layout as the engine uses them: [speaker][ear][LDCaixa], energy 1 together with the room, + room gain per speaker.</summary>
-    public static (double[][][] Resp, double[] Peso) Caixas(double[] angulos, bool modo71, int sala)
+    /// <summary>All speakers of a layout as the engine uses them: [speaker][ear][LDCaixa], energy 1 together with the room, + room gain per speaker.
+    /// fixarCentro = false: don't touch the engine's static AtrasoCentro (08/11 Fonte3D builds its own layouts).</summary>
+    public static (double[][][] Resp, double[] Peso) Caixas(double[] angulos, bool modo71, int sala, bool halo = true, bool fixarCentro = true)
     {
-        if (Neutro) return (CaixasNeutras(angulos, modo71), new double[angulos.Length]);
+        if (Neutro) return (CaixasNeutras(angulos, modo71, halo, fixarCentro), new double[angulos.Length]);
         var s = Salas[sala]; int n = angulos.Length;
         var d = new double[n][][]; var peso = new double[n];
         for (int c = 0; c < n; c++) d[c] = Direto(angulos[c], modo71);
@@ -540,7 +569,7 @@ public static partial class Brir
     }
 
     /// <summary>Neutral mode: raw HRIRs [speaker][ear][LDCaixa] through one EQ that makes the average over speakers of |HL|²+|HR|² flat at 0 dB.</summary>
-    static double[][][] CaixasNeutras(double[] angulos, bool modo71)
+    static double[][][] CaixasNeutras(double[] angulos, bool modo71, bool halo = true, bool fixarCentro = true)
     {
         int n = angulos.Length;
         var d = new double[n][][];
@@ -575,7 +604,7 @@ public static partial class Brir
         {
             int pico = 0; double m = -1;
             for (int i = 0; i < LDCaixa; i++) { double v = Math.Abs(d[2][0][i]) + Math.Abs(d[2][1][i]); if (v > m) { m = v; pico = i; } }
-            AtrasoCentro = pico;
+            if (fixarCentro) AtrasoCentro = pico;
             if (HaloTodas)
                 for (int c = 0; c < n; c++)
                 {
@@ -583,7 +612,7 @@ public static partial class Brir
                     var ha = Halo(PicoDe(d[c]), 100 + c, Energia(d[c][0]) + Energia(d[c][1]), angulos[c]);
                     for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa; i++) d[c][e][i] += ha[e][i];
                 }
-            if (VozPlana && VozHalo && !BaseEstereo) d[2] = Halo(pico);
+            if (halo && VozPlana && VozHalo && !BaseEstereo) d[2] = Halo(pico);
         }
         return d;
     }

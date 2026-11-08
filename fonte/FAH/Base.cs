@@ -1,4 +1,4 @@
-// Folders next to the exe (portable), log, saved UI state.
+﻿// Folders next to the exe (portable), log, saved UI state.
 using System.IO;
 using System.Text.Json;
 
@@ -111,6 +111,22 @@ static class Base
     public static string Modulos => Pasta("modulos");
     public static string Dados => Pasta("dados");
     public static string Config => Pasta("config");
+    /// <summary>08/11 dev mode: flag file usuario\config\dev (never in the release zip). Off = no Dev screen and the "dev" key is never applied.</summary>
+    public static bool Dev => File.Exists(Path.Combine(Config, "dev"));
+    /// <summary>08/11 Dev "Iniciar do zero": flag file usuario\config\zero (dev mode only). On = every start ignores estado.json and nothing is saved;
+    /// the flag is the only thing kept between runs. Decided once per run (first LerEstado), so toggling mid-session counts from the next start.</summary>
+    public static bool Zero => Dev && File.Exists(Path.Combine(Config, "zero"));
+    static bool zeroSessao;
+    public static void PorZero(bool on)
+    {
+        try { var f = Path.Combine(Config, "zero"); if (on) File.WriteAllText(f, ""); else File.Delete(f); Log("iniciar do zero: " + (on ? "ligado" : "desligado") + " (vale ao abrir de novo)"); }
+        catch (Exception ex) { Log("iniciar do zero: " + ex.Message); }
+    }
+    // zero state = flat / off: every module switch off, both EQs on Plano with tone 0, Estéreo+/Crossfeed/Reverb off. Missing keys = factory defaults.
+    const string BandasZero = "[{\"t\":\"grave\",\"f\":90,\"g\":0,\"q\":0.7,\"on\":1},{\"t\":\"pico\",\"f\":900,\"g\":0,\"q\":1.4,\"on\":1},{\"t\":\"pico\",\"f\":3500,\"g\":0,\"q\":1,\"on\":1},{\"t\":\"agudo\",\"f\":10000,\"g\":0,\"q\":0.7,\"on\":1}]";
+    const string EqZero = "{\"modo\":\"grafico\",\"equ\":true,\"tone\":true,\"limit\":false,\"pre\":0,\"g\":[0,0,0,0,0,0,0,0,0,0],\"bass\":0,\"treble\":0,\"teto\":-1,\"preset\":\"Plano\",\"sel\":0,\"bandas\":" + BandasZero + ",\"meus\":{}}";
+    const string EstadoZero = "{\"ligado\":{\"eq\":false,\"efeitos\":false,\"som71\":false,\"eqmic\":false,\"ruido\":false,\"voz\":false},\"eq2\":" + EqZero + ",\"eqmic\":" + EqZero
+        + ",\"efeitos\":{\"est\":{\"on\":true,\"modo\":\"auto\",\"bal\":0,\"larg\":100,\"mono\":false},\"cf\":{\"on\":false,\"nivel\":\"medio\"},\"rv\":{\"on\":false,\"preset\":\"Reverb leve\",\"p\":[60,80,32,25,75,35,44]}}}";
     static readonly Lock trava = new();
 
     public static void Log(string t)
@@ -124,12 +140,15 @@ static class Base
     /// <summary>UI state keys (eq2, ...) saved between runs.</summary>
     public static Dictionary<string, JsonElement> LerEstado()
     {
+        zeroSessao = Zero;
+        if (zeroSessao) { Log("iniciar do zero: estado salvo ignorado nesta sessão"); return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(EstadoZero)!; }
         try { return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(ArqEstado)) ?? []; }
         catch { return []; }
     }
 
     public static void GravarEstado(Dictionary<string, JsonElement> e)
     {
+        if (zeroSessao) return;                         // zero session: estado.json keeps the last normal session, untouched
         try { var tmp = ArqEstado + ".tmp"; File.WriteAllText(tmp, JsonSerializer.Serialize(e)); File.Move(tmp, ArqEstado, true); }
         catch (Exception ex) { Log("gravar estado: " + ex.Message); }
     }

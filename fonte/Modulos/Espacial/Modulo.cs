@@ -14,6 +14,7 @@ public sealed class Modulo : IModulo
     static readonly Dictionary<string, int> Perfil = new() { ["Música"] = 0, ["Filme"] = 1, ["Jogo"] = 2 };
 
     readonly Motor motor = new();
+    readonly Fonte3D fonte3d = new();                     // 08/11 3D screen (Fonte3D.cs), UI key "f3d"
     readonly Lock trava = new();
     readonly double[] ang = (double[])Brir.Ang71.Clone();
     int tipo = 0, sala = 0; bool on = true;                 // 29/10 default: Música
@@ -29,11 +30,12 @@ public sealed class Modulo : IModulo
     public IReadOnlyList<IEfeito> Efeitos { get; }
     public Motor Motor => motor;
 
-    public Modulo() => Efeitos = [new Efeito(motor)];
+    public Modulo() => Efeitos = [new Efeito(motor), fonte3d.Efeito];
 
     public void Iniciar(IHost h)
     {
         host = h;
+        fonte3d.Iniciar(h);
         relogio = new Timer(_ => Observar(), null, 2000, 2000);
         Preparar();
     }
@@ -59,7 +61,7 @@ public sealed class Modulo : IModulo
     }
 
     /// <summary>Loads the HRTF set in the background, then builds the filters (the engine passes sound through until then).</summary>
-    public Task Preparar() => preparo ??= Task.Run(() => { Brir.Preparar(); Reconstruir(); });
+    public Task Preparar() => preparo ??= Task.Run(() => { Brir.Preparar(); Reconstruir(); fonte3d.Pedir(); });
 
     public bool Receber(string chave, JsonElement v)
     {
@@ -69,6 +71,8 @@ public sealed class Modulo : IModulo
             motor.Ligado = on;
             return false;                       // shared key
         }
+        if (chave == "dev") { Dev(v); return false; }      // shared key (Efeitos reads its part); host only sends it in dev mode
+        if (chave == "f3d") { fonte3d.Receber(v); return true; }
         if (chave != "s71") return false;
         lock (trava)
         {
@@ -85,7 +89,6 @@ public sealed class Modulo : IModulo
             v.TryGetProperty("vol", out var vol); v.TryGetProperty("mudo", out var mudo);
             foreach (var (id, r) in Papel) motor.Ganho[r] = GanhoDe(vol, mudo, id);
             motor.GanhoLfe = GanhoDe(vol, mudo, "LFE");
-            motor.Forca = Num(v, "int", Intensidade.Padrao * 100) / 100;
             motor.Voz = Bool(v, "voz", true); motor.Sub = Bool(v, "sub", true);
         }
         if (ultimoTeste == "" && !v.TryGetProperty("teste", out _)) ultimoTeste = "-";   // nothing saved: the 1st test click must play
@@ -115,9 +118,43 @@ public sealed class Modulo : IModulo
             bool soAngulos = feito.Item1 == tipo && feito.Item2 == sala && feito.Item4 == ouvido;
             feito = chave;
             Brir.Usar(ouvido);
+            fonte3d.Pedir();                                 // the 3D screen follows the HRTF set
             if (!soAngulos || motor.PedidoEst == null) motor.PedidoEst = Ajustes.Construir(false, tipo, sala, ang);   // stereo layout ignores the angles
             motor.Pedido71 = Ajustes.Construir(true, tipo, sala, ang);
         }
+    }
+
+    public static volatile bool PalcoAberto = true;     // static since 08/11: Dev screen. Declared BEFORE Pad: static fields init in text order
+    public static double PalcoAbre = 0.60;              // same as Estéreo+ Música
+    // ---- 08/11 Dev screen (ui/telas/dev.js, only with usuario/config/dev): 7.1 engine knobs. Missing key = the shipped value.
+    static readonly (bool BaseEstereo, bool VozPlana, bool VozHalo, double HaloDb, double Espalhamento, double CaixaBase, double GanhoCentroBase,
+        double ForcaDifuso, double ForcaFrente, bool PalcoAberto, double PalcoAbre) Pad = (Brir.BaseEstereo, Brir.VozPlana, Brir.VozHalo, Brir.HaloDb,
+        Brir.Espalhamento, Brir.CaixaBase, Brir.GanhoCentroBase, Brir.ForcaDifuso, Brir.ForcaFrente, PalcoAberto, PalcoAbre);
+    static readonly double MisturaPad = Preencher.Mistura, SubAgudoPad = Motor.SubAgudo, SubEstereoPad = Motor.SubEstereo;
+    string estrutura = "";
+
+    void Dev(JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.Object) return;
+        motor.Forca = Math.Clamp(Num(v, "s71Int", Intensidade.Padrao * 100) / 100, 0, 1);
+        // 08/11 full-range speakers: live knobs, no rebuild
+        Preencher.Mistura = (float)Math.Clamp(Num(v, "mMistura", MisturaPad), 0, 1);
+        Motor.SubAgudo = (float)Math.Clamp(Num(v, "mSubAgudo", SubAgudoPad), 0, 1);
+        Motor.SubEstereo = (float)Math.Clamp(Num(v, "mSubEstereo", SubEstereoPad), 0, 2);
+        var d = (Bool(v, "mBaseEstereo", Pad.BaseEstereo), Bool(v, "mVozPlana", Pad.VozPlana), Bool(v, "mVozHalo", Pad.VozHalo), Math.Max(0, Num(v, "mHaloDb", Pad.HaloDb)),
+            Math.Clamp(Num(v, "mEspalhamento", Pad.Espalhamento), 10, 360), Num(v, "mCaixaBase", Pad.CaixaBase), Num(v, "mGanhoCentroBase", Pad.GanhoCentroBase),
+            Num(v, "mForcaDifuso", Pad.ForcaDifuso), Num(v, "mForcaFrente", Pad.ForcaFrente), Bool(v, "mPalcoAberto", Pad.PalcoAberto), Math.Clamp(Num(v, "mPalcoAbre", Pad.PalcoAbre), 0.2, 1));
+        string chave = d.ToString();
+        if (chave == estrutura) return;
+        bool primeira = estrutura == ""; estrutura = chave;
+        if (primeira && d == Pad) return;
+        lock (trava)
+        {
+            (Brir.BaseEstereo, Brir.VozPlana, Brir.VozHalo, Brir.HaloDb, Brir.Espalhamento, Brir.CaixaBase, Brir.GanhoCentroBase, Brir.ForcaDifuso, Brir.ForcaFrente, PalcoAberto, PalcoAbre) = d;
+            feito = (-1, -1, "", "");
+        }
+        host?.Log("dev: som 7.1 " + chave);
+        if (Brir.Pronto) Task.Run(() => { try { Reconstruir(); } catch (Exception e) { host?.Log("dev som71: " + e.Message); } });
     }
 
     static bool Bool(JsonElement o, string k, bool pad) => o.TryGetProperty(k, out var x)
@@ -127,12 +164,10 @@ public sealed class Modulo : IModulo
     // 07/11 user: "faça esse sistema de virar as caixas pra fora no 7.1 também pra ver como fica" -> Estéreo+ v5 re-pan (Palco.cs, linked
     // from Efeitos) before the virtual speakers: stereo = both channels before the upmix; 7.1 cable = front pair, other 6 delayed to match.
     // Experiment: PalcoAberto = false brings back the approved 7.1 exactly.
-    public const bool PalcoAberto = true;
-    const double PalcoAbre = 0.60;              // same as Estéreo+ Música
 
     sealed class Efeito(Motor m) : IEfeitoMulticanal
     {
-        FAH.Efeitos.Palco? palco; bool tinha;
+        FAH.Efeitos.Palco? palco; bool tinha; int taxa = 48000; double abre;
         float[] buf = [], par = [];
         readonly float[][] atraso = Enumerable.Range(0, 6).Select(_ => new float[1024]).ToArray();
         int ap;
@@ -140,10 +175,14 @@ public sealed class Modulo : IModulo
         public Lado Lado => Lado.Som;
         public int Posicao => 10;
         public bool QuerMulticanal => m.Ativo;
-        public void Preparar(int taxa) { palco = PalcoAberto ? new FAH.Efeitos.Palco(PalcoAbre, taxa) : null; tinha = false; }
+        public void Preparar(int t) { taxa = t; abre = PalcoAbre; palco = PalcoAberto ? new FAH.Efeitos.Palco(abre, taxa) : null; tinha = false; }
 
         bool UsaPalco()
         {
+            if (PalcoAberto != (palco != null) || (palco != null && abre != PalcoAbre))
+            {   // Dev screen changed the stage: swap it here (audio thread, rare, dev only)
+                abre = PalcoAbre; palco = PalcoAberto ? new FAH.Efeitos.Palco(abre, taxa) : null; tinha = false;
+            }
             bool usa = palco != null && m.Ativo;
             if (usa && !tinha) { palco!.Limpar(); foreach (var a in atraso) Array.Clear(a); ap = 0; }
             tinha = usa; return usa;

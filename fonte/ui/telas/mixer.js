@@ -27,11 +27,11 @@
   if (!real && tem('bypass')) App.estado.bypass = { som: ['tv', 'fone'], mic: ['micfone', 'cam'], ativos: ['som|tv', 'mic|micfone'] };
 
   document.head.insertAdjacentHTML('beforeend', `<style>
-  .t-mesa{display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding-bottom:12px!important}
+  .t-mesa{overflow-anchor:none;overflow-x:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding-bottom:12px!important}
   /* divider in the middle. Sound devices start at the left edge, mic devices end at the right edge; too many = the strip scrolls (wheel too),
      faded edge where more hide. Each side's Windows default is no card: it is the banner hanging from the top of the divider, its edge 2px
      off it, with the device drawn on the cloth (no box: programs on the default are the row below) */
-  .t-mesa .mesa{flex:none;align-self:stretch;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:4px 4px 8px;margin:-4px -4px 0;box-sizing:border-box;--bw:136px}
+  .t-mesa .mesa{overflow-x:clip;flex:none;align-self:stretch;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:4px 4px 8px;margin:-4px -4px 0;box-sizing:border-box;--bw:136px}
   .t-mesa .lado{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0}
   .t-mesa .lado:first-child{padding-right:40px;border-right:1px solid var(--linha)}.t-mesa .lado+.lado{padding-left:40px;align-items:flex-end}
   .t-mesa .lado.com-band{min-height:422px}.t-mesa .lado.com-band:first-child{padding-right:calc(var(--bw) + 30px)}.t-mesa .lado.com-band:last-child{padding-left:calc(var(--bw) + 30px)}

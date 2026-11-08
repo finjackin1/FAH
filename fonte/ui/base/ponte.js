@@ -3,7 +3,7 @@
 // State keys in VIGIA are sent to the engine whenever they change. Engine messages -> App.estado.<tipo> + event 'fah:<tipo>'.
 (() => {
   const wv = window.chrome && chrome.webview;
-  const VIGIA = ['eq2', 'efeitos', 'ligado', 's71', 'ordem', 'eqmic', 'ruido', 'voz', 'vm', 'cfg'];
+  const VIGIA = ['eq2', 'efeitos', 'ligado', 's71', 'ordem', 'eqmic', 'ruido', 'voz', 'vm', 'cfg'].concat(window.FAH_DEV ? ['dev', 'f3d'] : []);   // dev mode only: 'dev' = Dev screen knobs, 'f3d' = Som 3D screen
   if (window.FAH_SALVO) Object.assign(App.estado, window.FAH_SALVO);
   App.motor = { conectado: !!wv, enviar: (m) => wv && wv.postMessage(m) };
   if (!wv) return;                                  // plain browser (prototype tests): nothing else

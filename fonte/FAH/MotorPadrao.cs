@@ -34,7 +34,7 @@ sealed partial class Motor
         encerrando = true;
         try { if (enumPadrao != null && avisoPadrao != null) enumPadrao.UnregisterEndpointNotificationCallback(avisoPadrao); } catch { }
         enumPadrao?.Dispose(); enumPadrao = null; avisoPadrao = null;
-        relSom?.Dispose(); relMicP?.Dispose();
+        relSom?.Dispose(); relMicP?.Dispose(); vigiaCabos?.Dispose();
     }
 
     /// <summary>COM callback thread: only note it; the switch runs 400 ms later (Windows fires once per role).</summary>
@@ -85,7 +85,7 @@ sealed partial class Motor
                 return;
             }
             Log($"padrão do Windows ({(som ? "som" : "microfone")}) trocado para {a.Nome}: vira o aparelho do FAH, o Windows volta para o cabo");
-            TrocarPadrao(!som, id);
+            TrocarPadrao(!som, a.Id);
             if (som) Status(); else StatusMic();
         }
         catch (Exception e) { Log("padrão mudou: " + e.Message); }
@@ -97,9 +97,9 @@ sealed partial class Motor
         {
             if (!string.IsNullOrEmpty(defaultDeviceId)) m.PadraoMudou(flow == DataFlow.Render, defaultDeviceId, role == Role.Multimedia);
         }
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
-        public void OnDeviceAdded(string pwstrDeviceId) { }
-        public void OnDeviceRemoved(string deviceId) { }
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => m.AparelhoMudou();
+        public void OnDeviceAdded(string pwstrDeviceId) => m.AparelhoMudou();
+        public void OnDeviceRemoved(string deviceId) => m.AparelhoMudou();
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
 }

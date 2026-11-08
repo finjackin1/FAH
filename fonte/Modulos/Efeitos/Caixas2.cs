@@ -22,6 +22,11 @@ public sealed class Caixas2
     public static double Lado = 1.0, Caixa = 0.5;   // 07/11 user: "o efeito de estéreo some e o áudio fica focado no centro" (0.5/0.7: hard pan only 5 dB apart) -> full plain stereo + speakers on top (11 dB apart)
     /// <summary>08/11 user slider (0..1, see Espacial\Intensidade.cs): sets Lado/Caixa of v5 live. 0.5 = v5 as approved.</summary>
     public static double Forca = Intensidade.Padrao;
+    /// <summary>08/11 user: E+ "som igual on/off" (centered = identical by design; Jogo/Música/Filme were the same sound) -> option A:
+    /// more of the side S to the virtual speakers, a different amount per mode. Multiplies the speaker gain of Intensidade.Mapa (v5 only;
+    /// the 7.1 keeps its own). Plain side gain stays from Mapa (lowering it pulls hard pans to the middle). 1 = 1.2.3 sound.</summary>
+    public static readonly Dictionary<string, double> CaixaModo = new() { ["jogo"] = 1.3, ["musica"] = 1.6, ["filme"] = 2.0 };
+    readonly double kModo;
     const int B = Convolucao.B;
     static readonly Lock trava = new();
     /// <summary>07/11 user: "faça [como o Dolby: voz numa caixa virtual central à frente] e vamos ajustando, salve essa config atual como v2".
@@ -54,36 +59,28 @@ public sealed class Caixas2
     /// <summary>The low-pass phase lines the speaker S up with the plain S around 1-2 kHz (+2.6 dB bump on the sides): this dip takes it back.</summary>
     public static double PicoCaixaHz = 1600, PicoCaixaQ = 0.7, PicoCaixaDb = -8;
     static Convolucao? modelo, modeloCentro, modelo71, modeloLeque;
-    // fan order: [-30, 30, 0] = v3's own (center index 2 = AtrasoCentro), then -60 -45 -15 15 45 60. Negative = left (+S).
-    static readonly double[] AngLeque = [-30, 30, 0, -60, -45, -15, 15, 45, 60];
-    static readonly int[] ZonaE = [5, 0, 4, 3], ZonaD = [6, 1, 7, 8];   // 15 30 45 60 per side
+    // fan order: [-30, 30, 0] = v3's own (center index 2 = AtrasoCentro), then -60 -45 -15 15 45 60 (Cena.AngLeque). Negative = left (+S).
+    static readonly double[] Trio = [-30, 30, 0];
 
     /// <summary>v5 fan, same raw HRTF + flat gain as v3: the gain (averaged over the speakers by Brir) is put back to v3's exactly, so the
     /// ±30 pair and the center are v3's own responses.</summary>
     static Convolucao ModeloLeque()
-    {
+    {   // 08/11: built by the shared engine (Espacial\Cena.cs), as the 7.1's speakers
         lock (trava)
         {
             if (modeloLeque == null)
             {
-                Modelo(true);
-                Brir.Usar("h11"); Brir.BaseEstereo = false;
-                bool antes = Brir.VozPlana; Brir.VozPlana = false;
-                try
-                {
-                    var (ref3, _) = Brir.Caixas([-30, 30, 0], true, 0);
-                    var (resp, _) = Brir.Caixas(AngLeque, true, 0);
-                    static double E(double[][] h) { double s = 0; foreach (var x in h) foreach (var v in x) s += v * v; return s; }
-                    double k = Math.Sqrt(E(ref3[0]) / Math.Max(E(resp[0]), 1e-30));
-                    foreach (var c in resp) foreach (var x in c) for (int i = 0; i < x.Length; i++) x[i] *= k;
-                    atrasoCentro = Brir.AtrasoCentro; modeloLeque = new Convolucao(resp);
-                }
-                finally { Brir.VozPlana = antes; }
+                Brir.Usar("h11");
+                var (resp, at) = Cena.Respostas(Cena.Angulos(Frentes.Leque, Trio, []), Trio);
+                atrasoCentro = at; modeloLeque = new Convolucao(resp);
             }
             return modeloLeque;
         }
     }
     static int atrasoVoz, atrasoCentro, atraso71;
+
+    /// <summary>08/11 Dev screen: Brir knobs changed -> drop the built speaker models (next core builds them again).</summary>
+    public static void Reiniciar() { lock (trava) modelo = modeloCentro = modelo71 = modeloLeque = null; }
 
     /// <summary>v4: the 7.1 layout (FL FR C BL BR SL SR at Brir.Ang71) exactly as the new 7.1 builds it: raw HRTF center, no halo.</summary>
     static Convolucao Modelo71()
@@ -139,70 +136,28 @@ public sealed class Caixas2
     readonly float[] pal = new float[2 * B];
     readonly int dVoz;
     readonly bool v3, v4, v5;
-    const int NF = 2 * B;
-    readonly Fft fft = new(NF);
-    readonly double[] jan = [.. Enumerable.Range(0, NF).Select(i => Math.Sqrt(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / NF)))];
-    readonly double[] hl = new double[NF], hr = new double[NF], lRe = new double[NF], lIm = new double[NF], rRe = new double[NF], rIm = new double[NF];
-    readonly double[] pL = new double[B + 1], pR = new double[B + 1], ganhoBin = new double[9 * (B + 1)];
-    readonly double[] fRe = new double[NF], fIm = new double[NF], centroAnt = new double[B];
-    readonly double[][] cauda = [.. Enumerable.Range(0, 9).Select(_ => new double[B])];
-    readonly double[][] x9 = [.. Enumerable.Range(0, 9).Select(_ => new double[B])];
+    readonly Frente frente = new(Frentes.Leque, 0);            // 08/11 v5 = the shared engine's fan front (Espacial\Cena.cs)
+    readonly double[][] x9 = [.. Enumerable.Range(0, 9).Select(_ => new double[B])], entFrente;
     int cheio, posVoz;
 
-    public Caixas2(double abre, int taxa)
+    public Caixas2(double abre, int taxa, string modo = "")
     {
+        kModo = CaixaModo.GetValueOrDefault(modo, 1.0);
         v5 = VozIgual && Versao == 5; v4 = Versao == 4; v3 = VozIgual && (Versao == 3 || v5);
         conv = Novo();
-        dVoz = Math.Clamp((v4 ? atraso71 : v3 ? atrasoCentro : atrasoVoz) + (v5 ? B : 0), 0, linhaVoz.Length - B);
-        ent3 = [x[0], x[1], x[2]];
+        dVoz = Math.Clamp(v4 ? atraso71 : v3 ? atrasoCentro : atrasoVoz, 0, linhaVoz.Length - B);
+        ent3 = [x[0], x[1], x[2]]; entFrente = [l0, r0, vozC];
         if (abre < 1 && !VozIgual && !v4) palco = new Palco(abre, taxa);
     }
 
     public void Limpar()
     {
         conv = Novo(); preencher = new() { Plano = true }; palco?.Limpar(); corteCaixa = NovoCorte();
-        Array.Clear(hl); Array.Clear(hr); Array.Clear(pL); Array.Clear(pR); Array.Clear(centroAnt); foreach (var c in cauda) Array.Clear(c);
+        frente.Limpar();
         Array.Clear(yl); Array.Clear(yr); Array.Clear(linhaVoz); Array.Clear(linhaL); Array.Clear(linhaR); cheio = 0; posVoz = 0;
     }
 
     Convolucao Novo() => (v5 ? ModeloLeque() : v4 ? Modelo71() : Modelo(v3)).Clone();
-
-    /// <summary>v5: sCaixa (this block) -> x9 speaker feeds one hop (B) late. Pan per bin from smoothed L/R powers.</summary>
-    void Leque(double cx)
-    {
-        Array.Copy(hl, B, hl, 0, B); Array.Copy(hr, B, hr, 0, B);
-        for (int i = 0; i < B; i++)
-        {   // L and R parts of the speaker side signal: sCaixa = cx·(L-R)/2 -> keep L, R to get the pan
-            hl[B + i] = l0[i]; hr[B + i] = r0[i];
-        }
-        for (int i = 0; i < NF; i++) { lRe[i] = hl[i] * jan[i]; rRe[i] = hr[i] * jan[i]; }
-        Array.Clear(lIm); Array.Clear(rIm);
-        fft.Executar(lRe, lIm); fft.Executar(rRe, rIm);
-        const double a = 0.7; int K = B + 1;
-        Array.Clear(ganhoBin);
-        for (int k = 0; k < K; k++)
-        {
-            pL[k] = a * pL[k] + (1 - a) * (lRe[k] * lRe[k] + lIm[k] * lIm[k]);
-            pR[k] = a * pR[k] + (1 - a) * (rRe[k] * rRe[k] + rIm[k] * rIm[k]);
-            double psi = (pL[k] - pR[k]) / (pL[k] + pR[k] + 1e-20), ap = Math.Abs(psi);
-            // non-directional part: v3 style, +S left 30, -S right 30
-            ganhoBin[0 * K + k] += 1 - ap; ganhoBin[1 * K + k] -= 1 - ap;
-            // directional part: own side only, angle 15 + 45·|ψ| between fan nodes (constant power)
-            double pos = 3 * ap; int j = Math.Min((int)pos, 2); double t = pos - j;
-            var z = psi >= 0 ? ZonaE : ZonaD; double sg = psi >= 0 ? ap : -ap;
-            ganhoBin[z[j] * K + k] += sg * Math.Cos(t * Math.PI / 2);
-            ganhoBin[z[j + 1] * K + k] += sg * Math.Sin(t * Math.PI / 2);
-        }
-        for (int c = 0; c < 9; c++)
-        {
-            if (c == 2) continue;
-            int o = c * K;
-            for (int k = 0; k < K; k++) { double g = 0.5 * cx * ganhoBin[o + k]; fRe[k] = g * (lRe[k] - rRe[k]); fIm[k] = g * (lIm[k] - rIm[k]); }
-            fft.RealInversa(fRe, fIm);
-            var y = x9[c]; var cd = cauda[c];
-            for (int i = 0; i < B; i++) { y[i] = cd[i] + fRe[i] * jan[i]; cd[i] = fRe[B + i] * jan[B + i]; }
-        }
-    }
 
     /// <summary>n &lt;= 512 frames, interleaved L/R in e -> o.</summary>
     public void Processar(ReadOnlySpan<float> e, float[] o, int n)
@@ -243,28 +198,28 @@ public sealed class Caixas2
         if (VozIgual)
         {
             int m = linhaL.Length; double la = Lado, cx = Caixa, gv = GanhoVoz;
-            if (v5) (la, cx) = Intensidade.Mapa(Forca);
-            if (v3 && !(v5 && VozCentroPlana))
+            if (v5) { (la, cx) = Intensidade.Mapa(Forca); cx *= kModo; }
+            bool centroPlano = v5 && VozCentroPlana;
+            if (v3 && !centroPlano)
             {   // only what L and R share (the voice) goes to the center speaker; hard pans keep their plain stereo exactly
                 Array.Clear(lfe);
                 preencher.Bloco(x, lfe);                                // x[2] = shared part · √2 (Plano)
                 for (int i = 0; i < B; i++) vozC[i] = 0.70710678 * x[2][i];
             }
             else Array.Clear(vozC);
+            if (v5)
+            {   // plain M (minus the center's share) + la·S, cx·S over the fan, gv·shared part on the 0° speaker
+                frente.Bloco(entFrente, la, cx, gv, centroPlano ? null : vozC, vozP, vozR, x9, atrasoCentro);
+                conv.Bloco(x9, dl, dr);
+                for (int i = 0; i < B; i++) { yl[i] = vozP[i] + dl[i]; yr[i] = vozR[i] + dr[i]; }
+                return;
+            }
             for (int i = 0; i < B; i++)
             {
                 double c = vozC[i], mid = 0.5 * (l0[i] + r0[i]) - c, lado = 0.5 * (l0[i] - r0[i]);
                 sCaixa[i] = cx * lado; x[2][i] = gv * c;
                 linhaL[posVoz] = mid + la * lado; linhaR[posVoz] = mid - la * lado;
                 int k = (posVoz - dVoz + m) % m; vozP[i] = linhaL[k]; vozR[i] = linhaR[k]; posVoz = (posVoz + 1) % m;
-            }
-            if (v5)
-            {
-                Leque(cx);
-                for (int i = 0; i < B; i++) { x9[2][i] = centroAnt[i]; centroAnt[i] = x[2][i]; }
-                conv.Bloco(x9, dl, dr);
-                for (int i = 0; i < B; i++) { yl[i] = vozP[i] + dl[i]; yr[i] = vozR[i] + dr[i]; }
-                return;
             }
             if (v3) corteCaixa?.Processar(sCaixa, 0, B);
             for (int i = 0; i < B; i++) { x[0][i] = sCaixa[i]; x[1][i] = -sCaixa[i]; }

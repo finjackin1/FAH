@@ -9,7 +9,7 @@ namespace FAH.Efeitos;
 [ModuloFAH(Versao.Contrato)]
 public sealed class Modulo : IModulo
 {
-    /// <summary>Som 7.1 engine exists (Modulosspacial): its switch blocks crossfeed (same flag in efeitos.js).</summary>
+    /// <summary>Som 7.1 engine exists (Modulos/Espacial): its switch blocks crossfeed (same flag in efeitos.js).</summary>
     public const bool Som71Existe = true;
 
     readonly EstereoMais est = new();
@@ -69,11 +69,11 @@ public sealed class Modulo : IModulo
             Aplicar();
             return false;                       // shared key: other modules may read it too
         }
+        if (chave == "dev") { Dev(v); return false; }      // shared key (Som 7.1 reads its part); host only sends it in dev mode
         if (chave != "efeitos") return false;
         if (v.TryGetProperty("est", out var e))
         {
             estOn = Bool(e, "on", true); nivOn = Bool(e, "niv", false);
-            Caixas2.Forca = Num(e, "int", FAH.Espacial.Intensidade.Padrao * 100) / 100;
             if (e.TryGetProperty("modo", out var mo) && mo.ValueKind == JsonValueKind.String) modo = mo.GetString() is "jogo" or "musica" or "filme" ? mo.GetString()! : "auto";
         }
         if (v.TryGetProperty("cf", out var c))
@@ -105,6 +105,47 @@ public sealed class Modulo : IModulo
         cf.Ligado = eqOn && cfOn; cf.Permitido = !s71 && !est.Ligado;
         rv.Ligado = eqOn && rvOn;
         nv.Ligado = est.Ligado && nivOn;
+    }
+
+    // ---- 08/11 Dev screen (ui/telas/dev.js, only with usuario/config/dev): every Estéreo+ / leveler knob. Missing key = the shipped value.
+    static readonly (int Versao, bool V2, bool VozCentroPlana, double GanhoVoz, double Lado, double Caixa, double GanhoSaidaDb, double CorteCaixaHz,
+        double PicoHz, double PicoQ, double PicoDb, double Espalhamento, double HaloDb) PadE = (Caixas2.Versao, EstereoMais.V2, Caixas2.VozCentroPlana,
+        Caixas2.GanhoVoz, Caixas2.Lado, Caixas2.Caixa, Caixas2.GanhoSaidaDb, Caixas2.CorteCaixaHz, Caixas2.PicoCaixaHz, Caixas2.PicoCaixaQ,
+        Caixas2.PicoCaixaDb, FAH.Espacial.Brir.Espalhamento, FAH.Espacial.Brir.HaloDb);
+    static readonly (double Alvo, double Razao, double GanhoMax, double GuardaDb, double Intensidade) PadN =
+        (Nivelador.Alvo, Nivelador.Razao, Nivelador.GanhoMax, Nivelador.GuardaDb, Nivelador.Intensidade);
+    string estrutura = "";
+    Task refazendo = Task.CompletedTask;
+
+    void Dev(JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.Object) return;
+        Caixas2.Forca = Math.Clamp(Num(v, "eInt", FAH.Espacial.Intensidade.Padrao * 100) / 100, 0, 1);
+        Caixas2.GanhoVoz = Num(v, "eGanhoVoz", PadE.GanhoVoz); Caixas2.Lado = Num(v, "eLado", PadE.Lado); Caixas2.Caixa = Num(v, "eCaixa", PadE.Caixa);
+        Caixas2.GanhoSaidaDb = Num(v, "eGanhoSaidaDb", PadE.GanhoSaidaDb); Caixas2.VozCentroPlana = Bool(v, "eVozCentroPlana", PadE.VozCentroPlana);
+        Nivelador.Alvo = Num(v, "nAlvo", PadN.Alvo); Nivelador.Razao = Math.Max(1, Num(v, "nRazao", PadN.Razao));
+        Nivelador.GanhoMax = Num(v, "nGanhoMax", PadN.GanhoMax); Nivelador.GuardaDb = Num(v, "nGuardaDb", PadN.GuardaDb);
+        Nivelador.Intensidade = Num(v, "nIntensidade", PadN.Intensidade);
+        // structural: version / cut / Brir knobs change how the core is built -> rebuild off the audio thread (crossfade)
+        int versao = (int)Num(v, "eVersao", PadE.Versao); if (versao is not (3 or 4 or 5)) versao = PadE.Versao;
+        var e = (versao, Bool(v, "eV2", PadE.V2), Num(v, "eCorteCaixaHz", PadE.CorteCaixaHz), Num(v, "ePicoHz", PadE.PicoHz), Math.Max(0.1, Num(v, "ePicoQ", PadE.PicoQ)),
+            Num(v, "ePicoDb", PadE.PicoDb), Math.Clamp(Num(v, "eEspalhamento", PadE.Espalhamento), 10, 360), Math.Max(0, Num(v, "eHaloDb", PadE.HaloDb)));
+        string chave = e.ToString();
+        if (chave == estrutura) return;
+        bool primeira = estrutura == ""; estrutura = chave;
+        if (primeira && e == (PadE.Versao, PadE.V2, PadE.CorteCaixaHz, PadE.PicoHz, PadE.PicoQ, PadE.PicoDb, PadE.Espalhamento, PadE.HaloDb)) return;
+        refazendo = refazendo.ContinueWith(_ =>
+        {
+            try
+            {
+                Caixas2.Versao = e.versao; EstereoMais.V2 = e.Item2; Caixas2.CorteCaixaHz = e.Item3;
+                Caixas2.PicoCaixaHz = e.Item4; Caixas2.PicoCaixaQ = e.Item5; Caixas2.PicoCaixaDb = e.Item6;
+                FAH.Espacial.Brir.Espalhamento = e.Item7; FAH.Espacial.Brir.HaloDb = e.Item8;
+                Caixas2.Reiniciar(); est.Refazer();
+                host?.Log($"dev: estéreo+ refeito {chave}");
+            }
+            catch (Exception x) { host?.Log("dev estéreo+: " + x.Message); }
+        }, TaskScheduler.Default);
     }
 
     static bool Bool(JsonElement o, string k, bool pad) => o.TryGetProperty(k, out var x)

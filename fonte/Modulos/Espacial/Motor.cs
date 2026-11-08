@@ -13,15 +13,27 @@ public sealed class Ajustes
     public required Convolucao Rev { get; init; }          // 1 input (weighted mono sum), the room
     public required double[] Peso { get; init; }           // k/norma per speaker into the room
     public required double[][] Corr { get; init; }
+    /// <summary>08/11 user: in Filme/Jogo the 7.1 fronts are 3D too (a far enemy in front must not sit in the head): FL/FR/C go whole
+    /// through their HRTF speakers with Fonte3D.Externalizar, nothing plain. Música keeps the approved plain front (voice like stereo).</summary>
+    public bool Externo { get; init; }
 
     static readonly Convolucao?[] revCache = new Convolucao?[3];
 
     /// <summary>angulos = 7.1 layout (FL FR C BL BR SL SR); stereo content always uses the upmix layout.</summary>
     public static Ajustes Construir(bool modo71, int tipo, int sala, double[] angulos)
     {
-        var (resp, peso) = Brir.Caixas(modo71 ? angulos : Brir.AngEst, modo71, sala);
+        // 08/11 one engine: the approved 7.1 (Neutro + BaseEstereo) gets its speakers from Cena, as the Estéreo+ does
+        bool baseE = modo71 && Brir.Neutro && Brir.BaseEstereo, externo = baseE && tipo != 0;
+        var (resp, peso) = baseE
+            ? (Cena.Respostas(Cena.Angulos(Frentes.Par, angulos[..3], angulos[3..]), null).Resp, new double[angulos.Length])
+            : Brir.Caixas(modo71 ? angulos : Brir.AngEst, modo71, sala);
+        if (externo) for (int c = 0; c < 3; c++)
+        {   // +1.46 dB = same loudness as the Música front (measured, noise on FL/FR/C)
+            Fonte3D.Externalizar(resp[c], angulos[c], 0);
+            foreach (var o in resp[c]) for (int i = 0; i < o.Length; i++) o[i] *= 1.183;
+        }
         var rev = revCache[sala] ??= new Convolucao([Brir.SalaComum(sala)]);
-        return new() { Modo71 = modo71, Tipo = tipo, Sala = sala, Direto = new Convolucao(resp), Rev = rev, Peso = peso, Corr = Brir.Correcao(modo71, tipo) };
+        return new() { Modo71 = modo71, Tipo = tipo, Sala = sala, Direto = new Convolucao(resp), Rev = rev, Peso = peso, Corr = Brir.Correcao(modo71, tipo), Externo = externo };
     }
 }
 
@@ -43,6 +55,19 @@ public sealed class Motor
     public readonly double[] Ganho = [1, 1, 1, 1, 1, 1, 1];  // per speaker role (volume/mute)
     public volatile bool Sub = true, Voz = true;
     public double GanhoLfe = 1;
+    /// <summary>08/11 user: the sub must play everything too, leaning on the lows. SubAgudo = share of the sub feed above its 120 Hz low-pass
+    /// (0 = lows only, as before); SubEstereo = a stereo program on the 7.1 cable has no LFE, so the sub gets the fronts' mid while filling
+    /// (0 = silent sub, as before). Dev screen keys mSubAgudo / mSubEstereo.</summary>
+    public static volatile float SubAgudo = 0.25f, SubEstereo = 0.7f;
+    readonly double[] lfeCru = new double[B], meioFrente = new double[B];
+
+    /// <summary>Sub low-pass + its full-range share (SubAgudo).</summary>
+    void FiltrarSub()
+    {
+        Array.Copy(lfe, lfeCru, B);
+        lfeLp.Processar(lfe, 0, B);
+        double a = SubAgudo; if (a > 0) for (int i = 0; i < B; i++) lfe[i] += a * (lfeCru[i] - lfe[i]);
+    }
     /// <summary>08/11 "Intensidade" slider (0..1, Intensidade.cs) of the fronts' side part; read every block.</summary>
     public double Forca = Intensidade.Padrao;
     // "Far sounds don't vanish" (29/10, Jogo/Filme only): linked upward leveler on all speakers before the HRTF, so positions
@@ -84,6 +109,7 @@ public sealed class Motor
     readonly List<Vivo> vivos = [];
     Upmix upmix = new();
     Preencher preencher = new();
+    readonly Frente frente = new(Frentes.Par, 4);               // 08/11 shared front stage (Cena.cs), BaseEstereo path
     Biquads? dialogo, dialogoSala;
     readonly double[] cenSala = new double[B], flSala = new double[B], frSala = new double[B];
     readonly double[][] xSala = new double[7][];
@@ -99,8 +125,9 @@ public sealed class Motor
     static readonly double[][] Realce = [.. RealceP.Select(p => Biquads.Pico(p.Hz, p.Q, p.Db))], RealceInv = [.. RealceP.Select(p => Biquads.Pico(p.Hz, p.Q, -p.Db))];
     readonly double[] extra = new double[B];
     readonly double[][] x = [.. Enumerable.Range(0, 7).Select(_ => new double[B])];
-    readonly double[] linhaVoz = new double[4 * B], vozP = new double[B]; int posVoz;   // 07/11 plain center (Brir.VozPlana) / plain FL (BaseEstereo)
-    readonly double[] linhaVozR = new double[4 * B], vozR = new double[B];             // plain FR (BaseEstereo)
+    readonly double[] linhaVoz = new double[4 * B], vozP = new double[B]; int posVoz;   // 07/11 plain center (Brir.VozPlana) / plain L (BaseEstereo, via Frente)
+    readonly double[] vozR = new double[B];                                            // plain R (BaseEstereo, via Frente)
+    readonly double[][] xExt = new double[7][]; readonly double[] extL = new double[B], extR = new double[B], extC = new double[B], zero = new double[B];   // Externo feeds
     readonly double[] linhaSub = new double[4 * B]; int posSub;   // sub feed delay line (29/10: per head, Brir.AjusteSub)
     readonly double[] mono = new double[B], lfe = new double[B], dl = new double[B], dr = new double[B], rl = new double[B], rr = new double[B];
     readonly double[][] monoIn;
@@ -165,9 +192,10 @@ public sealed class Motor
         var v = new Vivo(a);
         if (de != null)
         {
-            v.Dir.CopiarEstado(de.Dir);                         // inputs are the same: the direct part is warm at once
+            if (de.A.Externo == a.Externo) v.Dir.CopiarEstado(de.Dir);   // inputs are the same: the direct part is warm at once
+            else v.Aquecer = v.Dir.P * B;                       // Música <-> Filme/Jogo: other front feeds, warm up first
             if (de.Rev.P == v.Rev.P) v.Rev.CopiarEstado(de.Rev);
-            else v.Aquecer = v.Rev.P * B;
+            else v.Aquecer = Math.Max(v.Aquecer, v.Rev.P * B);
         }
         return v;
     }
@@ -185,7 +213,7 @@ public sealed class Motor
         bool m71 = ch == 8;
         var ped = m71 ? Pedido71 : PedidoEst;
         if (ped == null) { Array.Clear(sai, nSai * 2, B * 2); nSai += B; return; }
-        if (modo71 != m71) { modo71 = m71; upmix = new(); preencher = new(); Array.Clear(linhaSub); Array.Clear(linhaVoz); Array.Clear(linhaVozR); vivos.Clear(); vivos.Add(NovoVivo(ped, null)); }
+        if (modo71 != m71) { modo71 = m71; upmix = new(); preencher = new(); Array.Clear(linhaSub); Array.Clear(linhaVoz); frente.Limpar(); vivos.Clear(); vivos.Add(NovoVivo(ped, null)); }
         else if (vivos.Count == 1 && vivos[0].A != ped) vivos.Add(NovoVivo(ped, vivos[0]));
 
         bool voz = Voz && !Brir.Neutro;
@@ -196,9 +224,12 @@ public sealed class Motor
             for (int c = 0; c < 7; c++) { var xc = x[c]; int k = Brir.Canal71[c]; for (int i = 0; i < B; i++) xc[i] = ent[i * 8 + k]; }
             for (int i = 0; i < B; i++) lfe[i] = ent[i * 8 + 3];
             preencher.Plano = Brir.Neutro && (Brir.VozPlana || Brir.BaseEstereo);
+            for (int i = 0; i < B; i++) meioFrente[i] = 0.5 * (x[0][i] + x[1][i]);
             preencher.Bloco(x, lfe);                            // 01/11: before the voice boost: its center is the voice now
+            double ge = preencher.Ganho * SubEstereo;          // 08/11: filled stereo -> the sub gets the fronts' mid (no LFE there)
+            if (ge > 0) for (int i = 0; i < B; i++) lfe[i] += ge * meioFrente[i];
             if (dialogo != null) { Realcar(x[2]); for (int i = 0; i < B; i++) x[2][i] += extra[i]; }
-            lfeLp.Processar(lfe, 0, B);
+            FiltrarSub();
             double gl = Sub ? 0.25 * GanhoLfe : 0;
             // one block late = in step with the convolution (28/10: on time it was -2.5 dB at 50 Hz, cancelling the fronts)
             AtrasarSub(gl, B + Brir.AjusteSub);
@@ -217,7 +248,7 @@ public sealed class Motor
             // (no HRTF/room), two blocks late = in step with the upmix + convolution (measured: 1 block = -2 dB at 50 Hz)
             double gs = Sub && !Brir.Neutro ? 0.25 * GanhoLfe : 0;
             for (int i = 0; i < B; i++) lfe[i] = 0.5 * (el[i] + er[i]);
-            lfeLp.Processar(lfe, 0, B);
+            FiltrarSub();
             AtrasarSub(gs, 2 * B + Brir.AjusteSub);
         }
         for (int c = 0; c < 7; c++) { double g = Ganho[c]; if (g != 1) { var xc = x[c]; for (int i = 0; i < B; i++) xc[i] *= g; } }
@@ -242,16 +273,15 @@ public sealed class Motor
         {
             int n = linhaVoz.Length, d = Math.Clamp(Brir.AtrasoCentro, 0, n - B);   // measured: the 7.1 convolution adds no block
             if (baseE)
-            {
-                var (la, cx) = Intensidade.Mapa(Forca); double gc = Brir.GanhoCentroBase;   // 08/11 slider; 0.5 = plain 1, CaixaBase 0.5 as approved
-                var fl = x[0]; var fr = x[1]; var c = x[2];
-                for (int i = 0; i < B; i++)
-                {
-                    double l = fl[i], r = fr[i], s = 0.5 * (l - r), md = 0.5 * (l + r);
-                    linhaVoz[posVoz] = md + la * s; linhaVozR[posVoz] = md - la * s;
-                    int k = (posVoz - d + n) % n; vozP[i] = linhaVoz[k]; vozR[i] = linhaVozR[k]; posVoz = (posVoz + 1) % n;
-                    fl[i] = cx * s; fr[i] = -cx * s; c[i] *= gc;
+            {   // 08/11 slider; 0.5 = plain 1, CaixaBase 0.5 as approved. In place: x = the 7 speaker feeds after
+                if (vivos.Exists(v => v.A.Externo))
+                {   // Filme/Jogo: whole FL/FR + gc·C to their (externalized) speakers; the plain stage below keeps running for a crossfade
+                    Array.Copy(x[0], extL, B); Array.Copy(x[1], extR, B);
+                    double gc = Brir.GanhoCentroBase; for (int i = 0; i < B; i++) extC[i] = gc * x[2][i];
+                    xExt[0] = extL; xExt[1] = extR; xExt[2] = extC; for (int c = 3; c < 7; c++) xExt[c] = x[c];
                 }
+                var (la, cx) = Intensidade.Mapa(Forca);
+                frente.Bloco(x, la, cx, Brir.GanhoCentroBase, null, vozP, vozR, x, Brir.AtrasoCentro);
             }
             else
             {
@@ -282,12 +312,14 @@ public sealed class Motor
         for (int vi = 0; vi < vivos.Count; vi++)
         {
             var v = vivos[vi];
-            v.Dir.Bloco(x, dl, dr);
+            bool ext = v.A.Externo && baseE && xExt[0] != null;
+            v.Dir.Bloco(ext ? xExt : x, dl, dr);
+            var pL = ext ? zero : vozP; var pR = ext ? zero : vozR;
             var p = v.A.Peso;
             for (int i = 0; i < B; i++) { double s = 0; for (int c = 0; c < 7; c++) s += p[c] * xSala[c][i]; mono[i] = s; }
             v.Rev.Bloco(monoIn, rl, rr);
             var y = vi == 0 ? y0 : yv;
-            for (int i = 0; i < B; i++) { y[i * 2] = dl[i] + rl[i] + lfe[i] + vozP[i]; y[i * 2 + 1] = dr[i] + rr[i] + lfe[i] + vozR[i]; }
+            for (int i = 0; i < B; i++) { y[i * 2] = dl[i] + rl[i] + lfe[i] + pL[i]; y[i * 2 + 1] = dr[i] + rr[i] + lfe[i] + pR[i]; }
             v.Corr.Processar(y, 0, B); v.Corr.Processar(y, 1, B);
         }
         if (vivos.Count == 2)

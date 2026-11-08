@@ -271,7 +271,7 @@
   // tooltip + toast (own balloon after 600 ms still, 150 ms with data-dica-ja, always inside the window; Mixer uses it too)
   const dica = document.createElement('div'); dica.className = 'i-dica'; document.body.append(dica); let tD = 0, alvo = null;
   const fechaDica = () => { clearTimeout(tD); dica.classList.remove('on'); alvo = null; };
-  addEventListener('mouseover', (e) => { const a = e.target.closest?.('.t-inicio [data-dica],.t-mesa [data-dica],.cb [data-dica]'); if (a === alvo) return; fechaDica(); alvo = a;
+  addEventListener('mouseover', (e) => { const a = e.target.closest?.('.t-inicio [data-dica],.t-mesa [data-dica],.cb [data-dica],.e3d [data-dica]'); if (a === alvo) return; fechaDica(); alvo = a;
     if (!a) return; tD = setTimeout(() => { const [t, ...l] = a.dataset.dica.split('|'); dica.innerHTML = `<b>${t}</b>${l.map((x) => `<span>${x}</span>`).join('')}`;
       const r = a.getBoundingClientRect(); dica.style.left = '0px'; dica.style.top = '0px'; dica.classList.add('on');
       const w = dica.offsetWidth, h = dica.offsetHeight; const x = r.left + r.width / 2 - w / 2; let y = r.bottom + 8; if (y + h > innerHeight - 8) y = r.top - h - 8;

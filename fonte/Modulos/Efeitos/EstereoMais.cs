@@ -52,13 +52,16 @@ public sealed class EstereoMais
         Atualizar();
     }
 
-    void Atualizar()
+    /// <summary>08/11 Dev screen: a structural knob changed (Caixas2 version/models): build the core again even with the same key (crossfade).</summary>
+    public void Refazer() => Atualizar(true);
+
+    void Atualizar(bool forcar = false)
     {
-        if (!ligado) return;                                    // built only when needed
+        if (!ligado) { if (forcar) lock (trava) desejado = null; return; }   // built only when needed (forced while off = next switch-on rebuilds)
         lock (trava)
         {
             string chave = $"{modo}|{taxa}";
-            if (desejado?.Chave == chave) return;
+            if (!forcar && desejado?.Chave == chave) return;
             try { desejado = new Nucleo(chave, Perfis[modo], taxa); Erro = null; }
             catch (Exception e) { Erro = e.Message; desejado = null; }
         }
@@ -122,7 +125,7 @@ public sealed class Nucleo
         bR = bS; gb = g * bR;
         kLarg = p.Largura - 1; hpA = 1 / (1 + 2 * Math.PI * p.Corte / taxa);
         atraso = new double[Math.Max(1, (int)Math.Round(p.Itd * taxa / 1000))];
-        if (EstereoMais.V2) caixas = new Caixas2(p.Abre, taxa);
+        if (EstereoMais.V2) caixas = new Caixas2(p.Abre, taxa, chave.Split('|')[0]);
         else if (p.Abre < 1) palco = new Palco(p.Abre, taxa);
     }
 

@@ -57,7 +57,7 @@ public sealed class Modulo : IModulo
             case "voz": voz = v.Clone(); Aplicar(); return true;
             case "vm": vm = v.Clone(); Aplicar(); return true;
             case "eqmic":
-                Limitador.TetoDb = Bool(v, "limit", false) && Num(v, "teto", -1) < 0 ? (float)Num(v, "teto", -1) : -1;
+                Limitador.TetoDb = Bool(v, "limit", false) && Num(v, "teto", -1) < 0 ? (float)Math.Max(-30, Num(v, "teto", -1)) : -1;
                 return true;
         }
         return false;
@@ -66,33 +66,35 @@ public sealed class Modulo : IModulo
     static bool Flag(JsonElement v, string k, bool pad) =>
         v.ValueKind != JsonValueKind.Object || !v.TryGetProperty(k, out var x) ? pad : x.ValueKind == JsonValueKind.True || (x.ValueKind == JsonValueKind.Number && x.GetDouble() != 0);
     static double Num(JsonElement? v, string k, double pad) =>
-        v is { ValueKind: JsonValueKind.Object } o && o.TryGetProperty(k, out var x) && x.ValueKind == JsonValueKind.Number ? x.GetDouble() : pad;
+        v is { ValueKind: JsonValueKind.Object } o && o.TryGetProperty(k, out var x) && x.ValueKind == JsonValueKind.Number && double.IsFinite(x.GetDouble()) ? x.GetDouble() : pad;
+    /// <summary>0..100 slider -> 0..1 (08/11 stress test: an out-of-range estado.json value stuck NaN in voz/nivel).</summary>
+    static float Pct(JsonElement? v, string k, double pad) => (float)Math.Clamp(Num(v, k, pad) / 100, 0, 1);
     static bool Bool(JsonElement? v, string k, bool pad) => v is { ValueKind: JsonValueKind.Object } o ? Flag(o, k, pad) : pad;
 
     /// <summary>UI state -> effects. Defaults = the screens' defaults.</summary>
     public void Aplicar()
     {
         Supressor.Ligado = onRuido && Bool(ruido, "ia", true);
-        Supressor.Forca = (float)(Num(ruido, "forca", 70) / 100);
+        Supressor.Forca = Pct(ruido, "forca", 70);
         // 31/10: with the AI on, the gate opens on speech (model's lsnr), not on level; level gate only without the model
         bool gate = onRuido && Bool(ruido, "gate", true);
         Supressor.Portao = gate && Supressor.Ligado && Supressor.Erro == null;
         Portao.Ligado = gate && !Supressor.Portao;
-        Portao.Limite = (float)(Num(ruido, "lim", 35) / 100);
+        Portao.Limite = Pct(ruido, "lim", 35);
         Supressor.Limiar = 15f * Portao.Limite;
         Portao.SoltarMs = Supressor.SoltarMs = (int)Math.Clamp(Num(ruido, "soltar", 250), 50, 2000);
 
         Voz.Tom = (float)Math.Clamp(Num(voz, "tom", 0), -12, 12);
         Voz.Timbre = (float)Math.Clamp(Num(voz, "tim", 0), -100, 100);
-        Voz.Robo = (float)(Num(voz, "rob", 0) / 100); Voz.Eco = (float)(Num(voz, "eco", 0) / 100); Voz.Radio = (float)(Num(voz, "rad", 0) / 100);
-        Voz.Mix = (float)(Num(voz, "mix", 100) / 100);
+        Voz.Robo = Pct(voz, "rob", 0); Voz.Eco = Pct(voz, "eco", 0); Voz.Radio = Pct(voz, "rad", 0);
+        Voz.Mix = Pct(voz, "mix", 100);
         Voz.Ligado = onVoz;
 
         Corte.Ligado = onEq && Bool(vm, "corte", true);
-        Nivelador.Forca = onEq ? (float)(Num(vm, "comp", 50) / 100) : 0;
-        DeEsser.Forca = onEq ? (float)(Num(vm, "sss", 40) / 100) : 0;
+        Nivelador.Forca = onEq ? Pct(vm, "comp", 50) : 0;
+        DeEsser.Forca = onEq ? Pct(vm, "sss", 40) : 0;
         AutoVolume.Ligado = onEq && Bool(vm, "ganho", true);
-        AutoVolume.AlvoDb = (float)(-60 + 0.6 * Num(vm, "alvo", 70));
+        AutoVolume.AlvoDb = (float)(-60 + 60 * Pct(vm, "alvo", 70));
     }
 
     public void Parar() { relogio?.Dispose(); Supressor.Dispose(); }

@@ -19,7 +19,7 @@ const App = (() => {
     detalhePor: (id) => detalhes[id],
     // screen: { id, classe, montar(el, params), aoMostrar?(el, params), aoSair?(destino) }
     tela(def) { telas[def.id] = def; },
-    // dock item: { id, icone | html(), dica, tela | acao, ordem, classe()?, dicaViva()? } (html/classe/dicaViva: toggles like "7.1")
+    // dock item: { id, icone | html(), dica, tela | acao, ordem, classe()?, dicaViva()?, aceso()? } (aceso: lit icon for overlays opened by acao) (html/classe/dicaViva: toggles like "7.1")
     dock(def) { dock.push(def); dock.sort((a, b) => (a.ordem ?? 50) - (b.ordem ?? 50)); },
 
     ir(id, params = {}) {
@@ -37,11 +37,11 @@ const App = (() => {
       const el = $('#dock');
       if (el.children.length !== dock.length) {
         el.innerHTML = dock.map((d) => { const i = d.html ? d.html() : UI.ico(d.icone);
-          return `<button data-dock="${d.id}" data-dica="${d.dicaViva ? d.dicaViva() : d.dica}" aria-label="${d.dica}" class="${estado.tela === d.tela ? 'on' : ''} ${d.html ? '' : 'ti'} ${d.classe ? d.classe() : ''}">${d.html ? i : `<span class="b">${i}</span><span class="l">${i}</span><span class="f">${i}</span>`}</button>`; }).join('');
+          return `<button data-dock="${d.id}" data-dica="${d.dicaViva ? d.dicaViva() : d.dica}" aria-label="${d.dica}" class="${(d.aceso ? d.aceso() : estado.tela === d.tela) ? 'on' : ''} ${d.html ? '' : 'ti'} ${d.classe ? d.classe() : ''}">${d.html ? i : `<span class="b">${i}</span><span class="l">${i}</span><span class="f">${i}</span>`}</button>`; }).join('');
         return;
       }
       for (const d of dock) { if (d.html) continue;
-        const b = el.querySelector(`[data-dock="${d.id}"]`), v = estado.tela === d.tela;
+        const b = el.querySelector(`[data-dock="${d.id}"]`), v = d.aceso ? d.aceso() : estado.tela === d.tela;
         if (!b || b.classList.contains('on') === v) continue;
         b.classList.remove('acende', 'apaga'); void b.offsetWidth; b.classList.add(v ? 'acende' : 'apaga'); b.classList.toggle('on', v);
       }

@@ -60,7 +60,8 @@ sealed partial class Motor
     void DesativarCabos(Cabo? som, Cabo? mic)
     {
         if (Environment.GetEnvironmentVariable("FAH_SIMULAR_PADRAO") != null) return;
-        var ids = new[] { som?.Tocar.Id, som?.Captar.Id, mic?.Tocar.Id, mic?.Captar.Id }.OfType<string>().Distinct().ToArray();
+        // + pairs parked on user stop (already off, but the list must keep them so next start turns them on)
+        var ids = new[] { som?.Tocar.Id, som?.Captar.Id, mic?.Tocar.Id, mic?.Captar.Id }.OfType<string>().Concat(IdsEstacionados()).Distinct().ToArray();
         if (ids.Length == 0) return;
         try
         {

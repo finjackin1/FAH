@@ -7,6 +7,8 @@ const S71 = (() => {
   const S = (App.estado.s71 = App.estado.s71 || { mudo: {}, ang: { ...ANG }, vol: Object.fromEntries(Object.keys(ANG).map((k) => [k, 100])) });
   if (S.angV !== 4) { S.ang = { ...ANG }; S.angV = 4; }   // saved older layout -> this one, once
   Object.assign(S, FIXO); delete S.teste;
+  // 08/11 user UI is fixed: speaker angles/volumes/mutes only change on the Dev screen (dev mode); outside it, always the approved layout
+  if (!window.FAH_DEV) { S.ang = { ...ANG }; S.vol = Object.fromEntries(Object.keys(ANG).map((k) => [k, 100])); S.mudo = {}; }
   App.estado.ligado = App.estado.ligado || {};
   const on = () => App.estado.ligado.som71 !== false;
 
@@ -83,7 +85,7 @@ const S71 = (() => {
       fxMudou(el, e, desenha); marcaPausa(el); });
     addEventListener('fah:s71liga', () => { if (el.isConnected) marcaPausa(el); }); };
 
-  return { S, FIXO, on, pausaCf, montar };
+  return { S, ANG, FIXO, on, pausaCf, montar };
 })();
 
 // Efeitos screen: Estéreo, Crossfeed, Reverb (7.1 moved to the dock)

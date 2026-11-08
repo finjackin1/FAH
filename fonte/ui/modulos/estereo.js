@@ -7,7 +7,8 @@ const Est = (() => {
   const NOME = Object.fromEntries(MODOS);
   const ABRE = { jogo: 45, musica: 70, filme: 90 };
   const DIZ = { auto: 'Muda sozinho conforme o que toca', jogo: 'Pouca abertura, direção precisa', musica: 'Aberto, voz e graves no centro', filme: 'Bem amplo, falas no centro' };
-  const E = () => { const e = (S.efeitos = S.efeitos || {}); e.est = e.est || { on: true }; if (!NOME[e.est.modo]) e.est.modo = 'auto'; if (typeof e.est.niv !== 'boolean') e.est.niv = false; if (typeof e.est.larg !== 'number') e.est.larg = 100; if (typeof e.est.bal !== 'number') e.est.bal = 0; if (typeof e.est.int !== 'number') e.est.int = 100; return e.est; };
+  const E = () => { const e = (S.efeitos = S.efeitos || {}); e.est = e.est || {}; e.est.on = true;   /* 08/11: the card switch is ligado.efeitos; est.on has no control here (a saved false killed E+ for good) */ if (!NOME[e.est.modo]) e.est.modo = 'auto'; if (typeof e.est.niv !== 'boolean') e.est.niv = false; if (typeof e.est.larg !== 'number') e.est.larg = 100; if (typeof e.est.bal !== 'number') e.est.bal = 0; delete e.est.int; return e.est; };
+  if (S.s71) delete S.s71.int;   // 08/11: the 1.2.3 Intensidade slider is gone (user UI fixed at the default; dev screen: dev.eInt / dev.s71Int)
   E();
   const modo = () => E().modo;
   const efetivo = () => (modo() === 'auto' ? (ABRE[S.estauto?.modo] ? S.estauto.modo : 'musica') : modo());
@@ -16,16 +17,6 @@ const Est = (() => {
   const parado = () => !on() || pausa();
   const niv = () => E().niv === true;
   let abre = ABRE[efetivo()];
-  // 08/11 "Intensidade" (user: effects too subtle): one slider on this card; while Som 7.1 is on it sets the 7.1's own value (s71.int).
-  // Engine: Espacial/Intensidade.cs (50% = the approved sound, voice untouched at any value)
-  const s71 = () => (S.s71 = S.s71 || {});
-  const intV = () => { if (pausa()) { if (typeof s71().int !== 'number') s71().int = 100; return s71().int; } return E().int; };
-  const intRot = () => (pausa() ? 'Intensidade do 7.1' : 'Intensidade');
-  const intHtml = () => `<div class="es-int"><span class="ir">${intRot()}</span>${UI.slider(intV(), { esint: 1, padrao: 100 })}<span class="vl">${intV()}%</span></div>`;
-  const intPinta = () => { const c = card(); if (!c) return; const sl = c.querySelector('[data-esint]'); if (!sl) return;
-    UI.poe(sl, intV()); c.querySelector('.es-int .vl').textContent = intV() + '%'; c.querySelector('.es-int .ir').textContent = intRot(); };
-  document.addEventListener('c:mudou', (e) => { if (!e.detail?.dados?.esint || !e.target.closest('[data-card=efeitos]')) return;
-    const v = Math.round(e.detail.valor); if (pausa()) s71().int = v; else E().int = v; e.target.parentNode.querySelector('.vl').textContent = v + '%'; });
 
   // fan drawing (same as the prototype, small size only)
   const campo = (w, h, a0, cinza) => {
@@ -68,8 +59,7 @@ const Est = (() => {
 .t-inicio [data-card=efeitos]{cursor:default}
 .t-inicio [data-card=efeitos]:hover{transform:none;box-shadow:none;background:var(--bg2)}
 .t-inicio [data-card=efeitos].off:hover{background:rgba(44,44,46,.35)}
-.t-inicio [data-card=efeitos] .vis{height:72px;margin:10px 0 8px}
-.es-int{display:flex;align-items:center;gap:10px;height:28px;margin-top:6px;font:13px var(--fonte);color:var(--fg2)}.es-int .c-slider{flex:1;margin:0}.es-int .vl{min-width:36px;text-align:right}
+.t-inicio [data-card=efeitos] .vis{margin:14px 0 10px}
 .t-inicio [data-card=efeitos] .res2{transition:opacity .15s}.t-inicio [data-card=efeitos] .res2.troca{opacity:0}
 .es-anel{fill:none;stroke:rgba(255,159,10,.28);stroke-dasharray:3 6}.es-borda{fill:none;stroke:rgba(255,159,10,.7);stroke-width:1.5}
 .es-gr{transition:opacity .3s,filter .3s;transform-origin:50% 100%;animation:es-gr .6s var(--curva) both}.es-gr.cinza{opacity:.3;filter:grayscale(1)}
@@ -134,7 +124,6 @@ const Est = (() => {
       <div class="t">${icone(modo(), efetivo())}<b>Estéreo+</b><button class="chave ${o ? 'on' : ''}" data-chave="efeitos" aria-label="Estéreo+: ${o ? 'ligado' : 'desligado'}"></button></div>
       <div class="vis${ja ? ' es-sem-anim' : ''}">${vis()}</div>
       <div class="es-linha"><button class="es-bt" aria-haspopup="listbox" aria-expanded="false" aria-label="Modo do Estéreo+">${icone(modo(), efetivo())}<span>${NOME[modo()]}</span>${SEL}</button>${nivChip()}</div>
-      ${intHtml()}
       <div class="res2">${txt2()}</div></div>`; };
 
   let tw = 0;
@@ -146,7 +135,6 @@ const Est = (() => {
     c.querySelectorAll('.pr-ic').forEach((s) => { s.dataset.g = modo(); s.dataset.a = efetivo(); }); poe2(c);
     c.querySelector('.es-gr')?.classList.toggle('cinza', parado());
     const tt = c.querySelector('.nv-teto'); if (tt) { tt.classList.toggle('cinza', parado()); tt.classList.toggle('on', niv() && !parado()); }
-    intPinta();
     const alvo = ABRE[efetivo()]; if (alvo !== abre) vai(abre, alvo, (x) => { abre = x; desenha(); }, 520); };
   const escolhe = (m) => { if (m === modo()) return; E().modo = m; const b = card()?.querySelector('.es-bt span');
     if (b) { b.textContent = NOME[m]; b.classList.remove('entra'); void b.offsetWidth; b.classList.add('entra'); } aplica(); };
