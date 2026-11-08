@@ -48,7 +48,7 @@ Precisa do [SDK do .NET 10](https://dotnet.microsoft.com/download) e do Python 3
 python ferramentas/empacotar.py <pasta vazia>
 ```
 
-O resultado sai em `<pasta vazia>\FAH` e em `FAH-win-x64.zip`. Os testes ficam em `fonte/Testes`. Alguns precisam de amostras de áudio que não estão no repositório e de um cabo virtual instalado.
+O resultado sai em `<pasta vazia>\FAH` e em `FAH-win-x64.zip`.
 
 ## Licença
 
