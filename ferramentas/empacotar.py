@@ -1,5 +1,5 @@
 """Clean FAH release: modules + self-contained publish + VC++ runtime for ONNX Runtime + licenses -> folder and zip.
-Usage: python -I empacotar.py <empty out folder> [dotnet.exe]. Result: <out>\\FAH and <out>\\FAH-win-x64.zip"""
+Usage: python -I empacotar.py <empty out folder> [dotnet.exe]. Default dotnet: FINJ_DOTNET > ../_ferramentas/dotnet (preparar-pc.ps1) > A:/opt/dotnet > PATH. Result: <out>\\FAH and <out>\\FAH-win-x64.zip"""
 import os
 import shutil
 import subprocess
@@ -12,11 +12,22 @@ MODULOS = ["Efeitos", "Equalizador", "Espacial", "Microfone"]
 VC = ["msvcp140.dll", "msvcp140_1.dll", "vcruntime140.dll", "vcruntime140_1.dll"]  # onnxruntime.dll imports these; not on a formatted PC
 
 
+def achar_dotnet():
+    for c in (os.environ.get("FINJ_DOTNET"), RAIZ.parent / "_ferramentas/dotnet/dotnet.exe", r"A:\opt\dotnet\dotnet.exe"):
+        if c and Path(c).is_file():
+            c = Path(c).resolve()
+            os.environ.setdefault("NUGET_PACKAGES", str(c.parent.parent / "nuget-pacotes"))  # cache beside portable dotnet
+            os.environ["DOTNET_ROOT"] = str(c.parent)
+            return str(c)
+    return "dotnet"
+
+
 def rodar(dotnet, *args):
     subprocess.run([dotnet, *args], cwd=RAIZ, check=True)
 
 
-def main(saida, dotnet="dotnet"):
+def main(saida, dotnet=None):
+    dotnet = dotnet or achar_dotnet()
     saida = Path(saida).resolve()
     if saida.exists() and any(saida.iterdir()):
         sys.exit(f"pasta nao esta vazia: {saida}")
@@ -41,7 +52,7 @@ def main(saida, dotnet="dotnet"):
             shutil.rmtree(app / pasta)
     shutil.copy2(RAIZ / "LICENSE", app / "LICENSE.txt")
     shutil.copy2(RAIZ / "THIRD-PARTY-NOTICES.txt", app / "THIRD-PARTY-NOTICES.txt")
-    pacote = Path.home() / ".nuget/packages/microsoft.ml.onnxruntime/1.31.1/ThirdPartyNotices.txt"
+    pacote = Path(os.environ.get("NUGET_PACKAGES") or Path.home() / ".nuget/packages") / "microsoft.ml.onnxruntime/1.31.1/ThirdPartyNotices.txt"
     if pacote.exists():
         shutil.copy2(pacote, modulos / "onnxruntime-ThirdPartyNotices.txt")
 

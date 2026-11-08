@@ -43,6 +43,8 @@ public sealed class Motor
     public readonly double[] Ganho = [1, 1, 1, 1, 1, 1, 1];  // per speaker role (volume/mute)
     public volatile bool Sub = true, Voz = true;
     public double GanhoLfe = 1;
+    /// <summary>08/11 "Intensidade" slider (0..1, Intensidade.cs) of the fronts' side part; read every block.</summary>
+    public double Forca = Intensidade.Padrao;
     // "Far sounds don't vanish" (29/10, Jogo/Filme only): linked upward leveler on all speakers before the HRTF, so positions
     // don't move. Below -30 dBFS it lifts half the gap (max +9 dB); silence/hiss under -65 untouched. Loud = drops at once
     // (64-sample ramp), quiet = rises slowly (0.4 s), no pumping. Asked instead of more echo.
@@ -97,6 +99,8 @@ public sealed class Motor
     static readonly double[][] Realce = [.. RealceP.Select(p => Biquads.Pico(p.Hz, p.Q, p.Db))], RealceInv = [.. RealceP.Select(p => Biquads.Pico(p.Hz, p.Q, -p.Db))];
     readonly double[] extra = new double[B];
     readonly double[][] x = [.. Enumerable.Range(0, 7).Select(_ => new double[B])];
+    readonly double[] linhaVoz = new double[4 * B], vozP = new double[B]; int posVoz;   // 07/11 plain center (Brir.VozPlana) / plain FL (BaseEstereo)
+    readonly double[] linhaVozR = new double[4 * B], vozR = new double[B];             // plain FR (BaseEstereo)
     readonly double[] linhaSub = new double[4 * B]; int posSub;   // sub feed delay line (29/10: per head, Brir.AjusteSub)
     readonly double[] mono = new double[B], lfe = new double[B], dl = new double[B], dr = new double[B], rl = new double[B], rr = new double[B];
     readonly double[][] monoIn;
@@ -181,7 +185,7 @@ public sealed class Motor
         bool m71 = ch == 8;
         var ped = m71 ? Pedido71 : PedidoEst;
         if (ped == null) { Array.Clear(sai, nSai * 2, B * 2); nSai += B; return; }
-        if (modo71 != m71) { modo71 = m71; upmix = new(); preencher = new(); Array.Clear(linhaSub); vivos.Clear(); vivos.Add(NovoVivo(ped, null)); }
+        if (modo71 != m71) { modo71 = m71; upmix = new(); preencher = new(); Array.Clear(linhaSub); Array.Clear(linhaVoz); Array.Clear(linhaVozR); vivos.Clear(); vivos.Add(NovoVivo(ped, null)); }
         else if (vivos.Count == 1 && vivos[0].A != ped) vivos.Add(NovoVivo(ped, vivos[0]));
 
         bool voz = Voz && !Brir.Neutro;
@@ -191,6 +195,7 @@ public sealed class Motor
         {
             for (int c = 0; c < 7; c++) { var xc = x[c]; int k = Brir.Canal71[c]; for (int i = 0; i < B; i++) xc[i] = ent[i * 8 + k]; }
             for (int i = 0; i < B; i++) lfe[i] = ent[i * 8 + 3];
+            preencher.Plano = Brir.Neutro && (Brir.VozPlana || Brir.BaseEstereo);
             preencher.Bloco(x, lfe);                            // 01/11: before the voice boost: its center is the voice now
             if (dialogo != null) { Realcar(x[2]); for (int i = 0; i < B; i++) x[2][i] += extra[i]; }
             lfeLp.Processar(lfe, 0, B);
@@ -229,6 +234,36 @@ public sealed class Motor
             if (testeResta <= 0) testeCaixa = -1;
         }
 
+        // 07/11 voice like stereo: the center role skips the head, 0.707 to each ear, as late as the HRTF center peak
+        // 07/11 new 7.1 (Brir.BaseEstereo) = Estéreo+ v3 on the fronts: FL/FR plain to their ear, only their side part feeds the ±30 HRTF pair,
+        // the center is a real HRTF speaker; sides/backs untouched (HRTF)
+        bool baseE = m71 && Brir.Neutro && Brir.BaseEstereo;
+        bool plana = m71 && Brir.Neutro && Brir.VozPlana && !baseE;
+        {
+            int n = linhaVoz.Length, d = Math.Clamp(Brir.AtrasoCentro, 0, n - B);   // measured: the 7.1 convolution adds no block
+            if (baseE)
+            {
+                var (la, cx) = Intensidade.Mapa(Forca); double gc = Brir.GanhoCentroBase;   // 08/11 slider; 0.5 = plain 1, CaixaBase 0.5 as approved
+                var fl = x[0]; var fr = x[1]; var c = x[2];
+                for (int i = 0; i < B; i++)
+                {
+                    double l = fl[i], r = fr[i], s = 0.5 * (l - r), md = 0.5 * (l + r);
+                    linhaVoz[posVoz] = md + la * s; linhaVozR[posVoz] = md - la * s;
+                    int k = (posVoz - d + n) % n; vozP[i] = linhaVoz[k]; vozR[i] = linhaVozR[k]; posVoz = (posVoz + 1) % n;
+                    fl[i] = cx * s; fr[i] = -cx * s; c[i] *= gc;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < B; i++)
+                {
+                    linhaVoz[posVoz] = plana ? 0.7071 * x[2][i] : 0;
+                    vozP[i] = vozR[i] = linhaVoz[(posVoz - d + n) % n]; posVoz = (posVoz + 1) % n;
+                }
+                if (plana && !Brir.VozHalo) Array.Clear(x[2]);   // with the halo the center's engine response IS the halo (Brir.Halo)
+            }
+        }
+
         // room feed without the voice boost (the boost stays on the direct sound only): 7.1 = the center; stereo = the
         // mid of the fronts (the upmix leaves the center empty, the boost rides on L and R alike)
         for (int c = 0; c < 7; c++) xSala[c] = x[c];
@@ -252,7 +287,7 @@ public sealed class Motor
             for (int i = 0; i < B; i++) { double s = 0; for (int c = 0; c < 7; c++) s += p[c] * xSala[c][i]; mono[i] = s; }
             v.Rev.Bloco(monoIn, rl, rr);
             var y = vi == 0 ? y0 : yv;
-            for (int i = 0; i < B; i++) { y[i * 2] = dl[i] + rl[i] + lfe[i]; y[i * 2 + 1] = dr[i] + rr[i] + lfe[i]; }
+            for (int i = 0; i < B; i++) { y[i * 2] = dl[i] + rl[i] + lfe[i] + vozP[i]; y[i * 2 + 1] = dr[i] + rr[i] + lfe[i] + vozR[i]; }
             v.Corr.Processar(y, 0, B); v.Corr.Processar(y, 1, B);
         }
         if (vivos.Count == 2)

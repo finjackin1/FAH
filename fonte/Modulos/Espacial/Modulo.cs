@@ -1,4 +1,4 @@
-// Som 7.1 module: UI state "s71" (ui\modulos\efeitos71.js, fixed: Música + head h11 + voz + sub) + "ligado.som71" (dock toggle "7.1") -> Motor, chain position 10.
+﻿// Som 7.1 module: UI state "s71" (ui\modulos\efeitos71.js, fixed: Música + head h11 + voz + sub) + "ligado.som71" (dock toggle "7.1") -> Motor, chain position 10.
 // Stereo content is spread over virtual speakers (upmix); a cable in 7.1 (8 channels) feeds them directly.
 // s71.auto = profile chosen by the program playing (Conteudo.cs).
 using System.Text.Json;
@@ -85,6 +85,7 @@ public sealed class Modulo : IModulo
             v.TryGetProperty("vol", out var vol); v.TryGetProperty("mudo", out var mudo);
             foreach (var (id, r) in Papel) motor.Ganho[r] = GanhoDe(vol, mudo, id);
             motor.GanhoLfe = GanhoDe(vol, mudo, "LFE");
+            motor.Forca = Num(v, "int", Intensidade.Padrao * 100) / 100;
             motor.Voz = Bool(v, "voz", true); motor.Sub = Bool(v, "sub", true);
         }
         if (ultimoTeste == "" && !v.TryGetProperty("teste", out _)) ultimoTeste = "-";   // nothing saved: the 1st test click must play

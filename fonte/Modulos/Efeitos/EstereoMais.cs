@@ -8,6 +8,7 @@
 // History: v1 HRIR+room "sala fechada"; v2 HRIR ±30° "falta uma parte"; v3 M/S x2 + all-pass "diamante bruto" but bright, in the head;
 // v3.1-3.3 side-treble filters "HORRÍVEL". v3 source kept at %TEMP%\EstereoMais-v3-1636.cs.
 // Profile change = new core + 40 ms crossfade; off = crossfade to dry, then untouched.
+// 07/11: v1 = this file as released in 1.2.2 (v4 core; note its Palco was built but never run). v2 = Caixas2.cs (the 7.1 system on two speakers).
 namespace FAH.Efeitos;
 
 /// <summary>Itd = interaural delay ms (bigger = speakers further out), Cruza = leak to the other ear (0..0.9), Sombra = head-shadow Hz,
@@ -24,6 +25,9 @@ public sealed class EstereoMais
         ["musica"] = new(0.45, 0.60, 300, 1.00, 500, 0.60),
         ["filme"] = new(0.60, 0.40, 300, 1.15, 300, 0.55),  // biggest
     };
+
+    /// <summary>true = Estéreo+ v2 (Caixas2). false = v1 (1.2.2 sound).</summary>
+    public static bool V2 = true;
 
     readonly CompensaVolume comp = new() { Fracao = 0.5 };
     readonly Lock trava = new();
@@ -108,6 +112,7 @@ public sealed class Nucleo
     readonly double[] atraso; int ap;
     double sombraU, sombraV, hpX, hpY;
     readonly Palco? palco;
+    readonly Caixas2? caixas;
 
     public Nucleo(string chave, PerfilEstereo p, int taxa)
     {
@@ -117,13 +122,15 @@ public sealed class Nucleo
         bR = bS; gb = g * bR;
         kLarg = p.Largura - 1; hpA = 1 / (1 + 2 * Math.PI * p.Corte / taxa);
         atraso = new double[Math.Max(1, (int)Math.Round(p.Itd * taxa / 1000))];
-        if (p.Abre < 1) palco = new Palco(p.Abre, taxa);
+        if (EstereoMais.V2) caixas = new Caixas2(p.Abre, taxa);
+        else if (p.Abre < 1) palco = new Palco(p.Abre, taxa);
     }
 
-    public void Limpar() { sombraU = sombraV = hpX = hpY = 0; Array.Clear(atraso); ap = 0; palco?.Limpar(); }
+    public void Limpar() { sombraU = sombraV = hpX = hpY = 0; Array.Clear(atraso); ap = 0; palco?.Limpar(); caixas?.Limpar(); }
 
     public void Processar(ReadOnlySpan<float> e, float[] o, int n)
     {
+        if (caixas != null) { caixas.Processar(e, o, n); return; }
         for (int i = 0; i < n; i++)
         {
             double l = e[2 * i], r = e[2 * i + 1], m = 0.5 * (l + r), s = 0.5 * (l - r);

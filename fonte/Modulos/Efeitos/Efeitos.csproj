@@ -10,6 +10,12 @@
     <ProjectReference Include="..\..\FAH.Contrato\FAH.Contrato.csproj" Private="false" />
     <!-- Estéreo+ Auto: same detector as Som 7.1, linked read-only (Espacial is locked, never edit it there) -->
     <Compile Include="..\Espacial\Conteudo.cs" Link="Conteudo.cs" />
+    <!-- 07/11 Estéreo+ v2 (Caixas2.cs): the 7.1 speakers/halo code, linked read-only + the fixed head h11 -->
+    <Compile Include="..\Espacial\Brir.cs" Link="Brir.cs" />
+    <Compile Include="..\Espacial\Conv.cs" Link="Conv.cs" />
+    <Compile Include="..\Espacial\Upmix.cs" Link="Upmix.cs" />
+    <Compile Include="..\Espacial\Intensidade.cs" Link="Intensidade.cs" />
+    <EmbeddedResource Include="..\Espacial\dados\hrtf_h11.npz" LogicalName="hrtf_h11.npz" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
   </ItemGroup>
   <!-- module .dll goes to the host's modulos\ folder -->

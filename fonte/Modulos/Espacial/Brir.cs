@@ -34,6 +34,32 @@ public static partial class Brir
     /// then ONE min-phase EQ that flattens the layout average (|HL|²+|HR|²) to 0 dB. Motor: voice boost and stereo sub off. false = previous chain.
     /// (The tiny "pertinho" room tried before it was reverted: "eq bizarra".)</summary>
     public static bool Neutro = true;
+    // 07/11 "polimento 3" (user: "ficou muito bom") = Neutro + VozPlana + SemEq71 + SalaReal71 + AoArLivre, all true.
+    // 07/11 "polimento 2" = this neutral 7.1 as released in 1.2.2 (approved: "essa versão atual tá muito boa"). Back to it: VozPlana = false.
+    /// <summary>07/11 user: the voice in 7.1 must sound like stereo; only the rest gives the 3D. With Neutro: the 7.1 center role skips the head,
+    /// 0.707·C straight to both ears (Motor), timed with the HRTF center (AtrasoCentro). Panned voices still move (they live in the fronts/sides).</summary>
+    public static bool VozPlana = true;
+    /// <summary>07/11 test: 7.1 with the raw HRTF, no neutral EQ (flat gain only). Back to polimento 2: SemEq71 = false.</summary>
+    public static bool SemEq71 = true;
+    /// <summary>07/11 user: speakers felt all aimed at him; each must radiate 360° like real life -> wall bounces per speaker (SomarParedes). false = off.</summary>
+    public static bool SalaReal71 = true;
+    /// <summary>07/11 user: not a room, outdoors with nothing in the way -> free field, only the grass ground bounce (0.6, low-passed 2.5 kHz). false = living room.</summary>
+    public static bool AoArLivre = true;
+    /// <summary>07/11 after polimento 3: plain voice + scattered 360° halo (Halo). false = polimento 3. HaloDb = halo under the plain voice.</summary>
+    public static bool VozHalo = true;
+    public static double HaloDb = 10;
+    // 07/11 "polimento 4" (user: "PERFEITO, parece ao redor") = polimento 3 + VozHalo.
+    /// <summary>07/11 test: every other speaker gets its own halo too (own random taps, HaloDb under its direct). false = polimento 4.</summary>
+    public static bool HaloTodas = false;
+    /// <summary>07/11: each speaker spreads this many degrees, aimed at the head (Cobertura). 360 = polimento 4.</summary>
+    public static double Espalhamento = 360;
+    /// <summary>07/11 user: new 7.1 = the approved Estéreo+ v3 as base + the other speakers for separation (Motor): fronts go PLAIN to the ears
+    /// (delayed to meet the HRTF) + CaixaBase·S / -CaixaBase·S into the ±30 HRTF speakers; center = raw HRTF speaker at 0° (no halo, no plain
+    /// voice) at GanhoCentroBase; sides/backs stay HRTF. false = polimento 4 ("PERFEITO") exactly.</summary>
+    public static bool BaseEstereo = true;
+    public static double GanhoCentroBase = 1.0, CaixaBase = 0.5;
+    /// <summary>Samples from a 7.1 center input to its peak at the ear through the neutral HRTF (without the engine block).</summary>
+    public static volatile int AtrasoCentro;
     public static readonly Sala[] Salas =
     [
         // 01/11: Música (4 x 3.6 m, RT60 0.18) = "bolha", space reached a point then cut off → same fix as 29/10 media:
@@ -457,7 +483,7 @@ public static partial class Brir
     /// <summary>All speakers of a layout as the engine uses them: [speaker][ear][LDCaixa], energy 1 together with the room, + room gain per speaker.</summary>
     public static (double[][][] Resp, double[] Peso) Caixas(double[] angulos, bool modo71, int sala)
     {
-        if (Neutro) return (CaixasNeutras(angulos), new double[angulos.Length]);
+        if (Neutro) return (CaixasNeutras(angulos, modo71), new double[angulos.Length]);
         var s = Salas[sala]; int n = angulos.Length;
         var d = new double[n][][]; var peso = new double[n];
         for (int c = 0; c < n; c++) d[c] = Direto(angulos[c], modo71);
@@ -488,8 +514,33 @@ public static partial class Brir
         return (d, peso);
     }
 
+    /// <summary>07/11 SalaReal71: the speaker radiates all around in a furnished living room; every wall bounce (1st and 2nd order, image method)
+    /// reaches the ears through the HRTF of the direction it really comes from, with its true delay and 1/distance level; no artificial tail.</summary>
+    static void SomarParedes(double[][] d, double azGraus)
+    {
+        double[] tam = [6.0, 5.5, 2.7], ouv = [3.0, 2.75, 1.2];
+        const double d0 = 2.0, refl = 0.7;                      // pressure reflection of a furnished room (~50% energy absorbed per bounce)
+        double ar = azGraus * Math.PI / 180;
+        double[] fonte = [ouv[0] + d0 * Math.Sin(ar), ouv[1] + d0 * Math.Cos(ar), ouv[2]];
+        double[][] o = [new double[LDCaixa], new double[LDCaixa]];
+        for (int nx = -2; nx <= 2; nx++) for (int ny = -2; ny <= 2; ny++) for (int nz = -2; nz <= 2; nz++)
+        {
+            int ordem = Math.Abs(nx) + Math.Abs(ny) + Math.Abs(nz);
+            if (ordem == 0 || ordem > 2) continue;
+            if (AoArLivre && !(nx == 0 && ny == 0 && nz == -1)) continue;   // outdoors: only the ground bounce
+            static double Img(int k, double f, double L) => k % 2 == 0 ? k * L + f : (k + 1) * L - f;
+            double[] v = [Img(nx, fonte[0], tam[0]) - ouv[0], Img(ny, fonte[1], tam[1]) - ouv[1], Img(nz, fonte[2], tam[2]) - ouv[2]];
+            double dist = Math.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]), g = Math.Pow(AoArLivre ? 0.6 : refl, ordem) * d0 / dist;
+            int at = (int)Math.Round((dist - d0) / CSom * Taxa);
+            if (at >= LDCaixa) continue;
+            var h = Resposta(Math.Atan2(v[0], v[1]) * 180 / Math.PI, Math.Atan2(v[2], Math.Sqrt(v[0] * v[0] + v[1] * v[1])) * 180 / Math.PI);
+            for (int e = 0; e < 2; e++) for (int i = 0; i < h[e].Length && at + i < LDCaixa; i++) o[e][at + i] += h[e][i] * g;
+        }
+        for (int e = 0; e < 2; e++) { Biquads.Filtrar([Biquads.PassaBaixa(AoArLivre ? 2500 : 9000)], o[e]); for (int i = 0; i < LDCaixa; i++) d[e][i] += o[e][i]; }
+    }
+
     /// <summary>Neutral mode: raw HRIRs [speaker][ear][LDCaixa] through one EQ that makes the average over speakers of |HL|²+|HR|² flat at 0 dB.</summary>
-    static double[][][] CaixasNeutras(double[] angulos)
+    static double[][][] CaixasNeutras(double[] angulos, bool modo71)
     {
         int n = angulos.Length;
         var d = new double[n][][];
@@ -499,7 +550,8 @@ public static partial class Brir
             var h = Resposta(angulos[c]);
             d[c] = new double[2][];
             for (int e = 0; e < 2; e++) { d[c][e] = new double[LDCaixa]; Array.Copy(h[e], d[c][e], Math.Min(LDCaixa, h[e].Length)); }
-            var pe = Potencia(h, false);
+            if (modo71 && SalaReal71) SomarParedes(d[c], angulos[c]);
+            var pe = Potencia(modo71 && SalaReal71 ? d[c] : h, false);
             for (int k = 0; k < KF; k++) p[k] += pe[k] / n;
         }
         var liso = Suavizar(p, 1.0 / 6);                           // 1/3 octave
@@ -507,9 +559,78 @@ public static partial class Brir
         for (int k = 0; k < KF; k++) g[k] = Math.Clamp(-10 * Math.Log10(Math.Max(liso[k], 1e-12)), -15, 15);
         double g60 = g[Bin(60)], g18 = g[Bin(18000)];
         for (int k = 0; k < KF; k++) { if (Fk(k) < 60) g[k] = g60; if (Fk(k) > 18000) g[k] = g18; }
-        var fir = FirFaseMinima(g);
-        foreach (var h in d) foreach (var x in h) Aplicar(x, fir);
+        if (modo71 && SemEq71)
+        {   // raw HRTF, only a flat gain = the EQ's average 500 Hz-2 kHz, so loudness stays close
+            double sg = 0; int ng = 0;
+            for (int k = 0; k < KF; k++) if (Fk(k) >= 500 && Fk(k) <= 2000) { sg += g[k]; ng++; }
+            double ganho = Math.Pow(10, sg / Math.Max(ng, 1) / 20);
+            foreach (var h in d) foreach (var x in h) for (int i = 0; i < x.Length; i++) x[i] *= ganho;
+        }
+        else
+        {
+            var fir = FirFaseMinima(g);
+            foreach (var h in d) foreach (var x in h) Aplicar(x, fir);
+        }
+        if (modo71)
+        {
+            int pico = 0; double m = -1;
+            for (int i = 0; i < LDCaixa; i++) { double v = Math.Abs(d[2][0][i]) + Math.Abs(d[2][1][i]); if (v > m) { m = v; pico = i; } }
+            AtrasoCentro = pico;
+            if (HaloTodas)
+                for (int c = 0; c < n; c++)
+                {
+                    if (c == 2) continue;
+                    var ha = Halo(PicoDe(d[c]), 100 + c, Energia(d[c][0]) + Energia(d[c][1]), angulos[c]);
+                    for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa; i++) d[c][e][i] += ha[e][i];
+                }
+            if (VozPlana && VozHalo && !BaseEstereo) d[2] = Halo(pico);
+        }
         return d;
+    }
+
+    /// <summary>07/11 user: the plain voice still felt aimed at him, must be "360" too. The center's HRTF response is replaced by a soft
+    /// scattered halo: 16 directions all around (some up, some down), 3 random taps each 2-18 ms after the plain voice, through the HRTF of
+    /// each direction, low-passed 7 kHz, energy HaloDb under the plain voice. Many random taps = no comb; arriving after = voice stays at the ears.</summary>
+    static double[][] Halo(int pico, int semente = 7, double energia = 1, double azCaixa = 0)
+    {
+        var rng = new Random(semente);
+        double[][] o = [new double[LDCaixa], new double[LDCaixa]];
+        for (int j = 0; j < 16; j++)
+        {
+            double az = j * 22.5 + rng.NextDouble() * 10 - 5, el = (j % 3) switch { 0 => 0, 1 => 25, _ => -25 };
+            var h = Resposta(az, el);
+            for (int t = 0; t < 3; t++)
+            {
+                int at = pico + (int)((0.002 + rng.NextDouble() * 0.016) * Taxa) - Math.Max(0, PicoDe(h));
+                double g = (rng.NextDouble() < 0.5 ? -1 : 1) * (0.5 + rng.NextDouble()) * Cobertura(az, el, azCaixa);
+                if (g == 0) continue;
+                for (int e = 0; e < 2; e++) for (int i = 0; i < h[e].Length; i++) { int q = at + i; if (q >= 0 && q < LDCaixa) o[e][q] += h[e][i] * g; }
+            }
+        }
+        for (int e = 0; e < 2; e++) Biquads.Filtrar([Biquads.PassaBaixa(7000)], o[e]);
+        double k = Math.Sqrt(energia * Math.Pow(10, -HaloDb / 10) / Math.Max(1e-12, Energia(o[0]) + Energia(o[1])));
+        for (int e = 0; e < 2; e++) for (int i = 0; i < LDCaixa; i++) o[e][i] *= k;
+        return o;
+    }
+
+    /// <summary>07/11 user: speakers spread 240°, facing him. A halo tap from (az, el) = a reflector ~4 m away in that direction; the speaker
+    /// (2 m away at azCaixa, aimed at the head) only feeds it if the reflector is within Espalhamento/2 of its axis (soft ±10° edge).</summary>
+    static double Cobertura(double az, double el, double azCaixa)
+    {
+        if (Espalhamento >= 360) return 1;
+        double a = az * Math.PI / 180, e = el * Math.PI / 180, c = azCaixa * Math.PI / 180;
+        double[] p = [4 * Math.Cos(e) * Math.Sin(a), 4 * Math.Cos(e) * Math.Cos(a), 4 * Math.Sin(e)], s = [2 * Math.Sin(c), 2 * Math.Cos(c), 0];
+        double[] v = [p[0] - s[0], p[1] - s[1], p[2]];
+        double cos = -(v[0] * s[0] + v[1] * s[1]) / (Math.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) * 2);   // axis = speaker -> head = -s
+        double fora = Math.Acos(Math.Clamp(cos, -1, 1)) * 180 / Math.PI, meio = Espalhamento / 2;
+        return Math.Clamp((meio + 10 - fora) / 20, 0, 1);
+    }
+
+    static int PicoDe(double[][] h)
+    {
+        int p = 0; double m = -1;
+        for (int i = 0; i < h[0].Length; i++) { double v = Math.Abs(h[0][i]) + Math.Abs(h[1][i]); if (v > m) { m = v; p = i; } }
+        return p;
     }
 
     /// <summary>Direct part of one speaker (HRIR + set EQ + cues), [ear][LD], and its room gain k (reverb = k·rev):

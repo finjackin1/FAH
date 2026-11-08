@@ -1,4 +1,4 @@
-// Stereo -> virtual speakers, plain matrix (28/10: the per-bin STFT upmix sounded like low-bitrate MP3 and swayed L/R):
+﻿// Stereo -> virtual speakers, plain matrix (28/10: the per-bin STFT upmix sounded like low-bitrate MP3 and swayed L/R):
 // L -> front left, R -> front right, untouched; only the side part S = (L-R)/2 (what isn't centered) feeds the sides
 // (5 ms late) and the back pair (12 ms late), low-passed. Centered sound (voice) stays clean in front. Same 512 delay as before.
 namespace FAH.Espacial;
@@ -99,6 +99,9 @@ public sealed class Preencher
     double g;
 
     public double Ganho => g;
+    /// <summary>07/11: center role goes straight to the ears at 0.707 (Brir.VozPlana) -> the shared part goes in plain at √2 (= the same
+    /// level both fronts gave it), no HRTF timbre match.</summary>
+    public bool Plano;
 
     public Preencher()
     {
@@ -150,12 +153,14 @@ public sealed class Preencher
                 sl[i] += el * ps; sr[i] += er * ps; tl[i] += el * pt; tr[i] += er * pt;
             }
         }
-        tomCentro.Processar(cen, 0, B);
+        bool plano = Plano;
+        if (!plano) tomCentro.Processar(cen, 0, B);
+        double gc = plano ? Math.Sqrt(2) : GanhoCentro;
         if (g0 == 0 && g1 == 0) return;
         for (int i = 0; i < B; i++)
         {
             double t = g0 + (g1 - g0) * (i + 1) / B;
-            x[0][i] -= fl[i] * t; x[1][i] -= fr[i] * t; x[2][i] += cen[i] * t * GanhoCentro;
+            x[0][i] -= fl[i] * t; x[1][i] -= fr[i] * t; x[2][i] += cen[i] * t * gc;
             x[5][i] += sl[i] * t; x[6][i] += sr[i] * t; x[3][i] += tl[i] * t; x[4][i] += tr[i] * t;
         }
     }

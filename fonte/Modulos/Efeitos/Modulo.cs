@@ -1,4 +1,4 @@
-// Effects module (Som side). "efeitos".est {on, modo auto|jogo|musica|filme, niv} = Estéreo+ card (Início, switch "ligado".efeitos); niv = "Nivelar volume" (leveler, 90, only while Estéreo+ is really on);
+﻿// Effects module (Som side). "efeitos".est {on, modo auto|jogo|musica|filme, niv} = Estéreo+ card (Início, switch "ligado".efeitos); niv = "Nivelar volume" (leveler, 90, only while Estéreo+ is really on);
 // "efeitos".cf / .rv = crossfeed (20) and reverb (80), shown on the EQ screen since 04/11 -> follow the EQ switch ("ligado".eq).
 // Also reads "ligado" (module switches on the device screen) without owning it.
 using System.Text.Json;
@@ -73,6 +73,7 @@ public sealed class Modulo : IModulo
         if (v.TryGetProperty("est", out var e))
         {
             estOn = Bool(e, "on", true); nivOn = Bool(e, "niv", false);
+            Caixas2.Forca = Num(e, "int", FAH.Espacial.Intensidade.Padrao * 100) / 100;
             if (e.TryGetProperty("modo", out var mo) && mo.ValueKind == JsonValueKind.String) modo = mo.GetString() is "jogo" or "musica" or "filme" ? mo.GetString()! : "auto";
         }
         if (v.TryGetProperty("cf", out var c))
