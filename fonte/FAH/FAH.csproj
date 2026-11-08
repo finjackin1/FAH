@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>FAH</AssemblyName>
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
     <RootNamespace>FAH</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- program icon (same as the old FAH): exe, taskbar, window and tray -->
